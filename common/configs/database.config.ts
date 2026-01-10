@@ -1,9 +1,11 @@
 import { registerAs } from '@nestjs/config';
 
-export default registerAs('database', () => ({
-  host: process.env.DB_HOST,
-  port: Number(process.env.DB_PORT || 5432),
-  username: process.env.DB_USERNAME,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
+export const databaseConfig = registerAs('database', () => ({
+  url: process.env.DATABASE_URL,
+  host: process.env.POSTGRES_HOST || 'localhost',
+  port: parseInt(process.env.POSTGRES_PORT || '5432', 10),
+  user: process.env.POSTGRES_USER || 'postgres',
+  password: process.env.POSTGRES_PASSWORD || '',
+  name: process.env.POSTGRES_DB || 'postgres',
+  ssl: process.env.DATABASE_SSL === 'true',
 }));

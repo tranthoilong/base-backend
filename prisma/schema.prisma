@@ -1,0 +1,2651 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = []
+}
+
+datasource db {
+  provider = "postgresql"
+  // url moved to prisma.config.ts for Prisma 7+ compatibility
+}
+
+// ============================================
+// Organization Domain - REMOVED
+// ============================================
+
+// ============================================
+// User & Authentication Domain
+// ============================================
+
+model User {
+  id       String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  email    String @unique
+  password String
+  name     String
+
+  // Profile fields
+  avatar String? // URL to avatar image
+  phone  String? @unique
+  bio    String? @db.Text
+
+  // Status & verification
+  isActive                 Boolean   @default(true)
+  isVerified               Boolean   @default(false)
+  emailVerifiedAt          DateTime?
+  emailVerificationToken   String? // Token for email verification
+  emailVerificationExpires DateTime? // Token expiration time
+
+  // Security
+  lastLoginAt          DateTime?
+  lastLoginIp          String?
+  passwordChangedAt    DateTime?
+  twoFactorEnabled     Boolean   @default(false)
+  twoFactorSecret      String?
+  passwordResetToken   String? // Token for password reset
+  passwordResetExpires DateTime? // Token expiration time
+
+  // Metadata
+  metadata Json? // Flexible field for additional data
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  // Relations
+  roles                        UserRole[] // Deprecated: will be removed after migration
+  media                        Media[]
+  mediaFolders                 MediaFolder[]
+  providers                    UserProvider[]
+  passwordHistory              PasswordHistory[]
+  sensitiveActionVerifications SensitiveActionVerification[]
+  driver                       Driver?                       @relation("DriverUser")
+  merchant                     Merchant?                     @relation("MerchantUser")
+  rides                        Ride[]                        @relation("RideUser")
+  orders                       Order[]                       @relation("OrderUser")
+  ratingsGiven                 Rating[]                      @relation("RaterUser")
+  webhookEndpoints             WebhookEndpoint[]
+  devices                      UserDevice[]
+  sessions                     UserSession[]
+  addresses                    UserAddress[]
+  favoriteLocations            UserFavoriteLocation[]
+  coupons                      Coupon[]
+  documents                    Document[]                    @relation("UserDocuments")
+  wallet                       Wallet?                       @relation("UserWallet")
+
+  @@index([email])
+  @@index([phone])
+  @@index([isActive])
+  @@index([isVerified])
+  @@index([deletedAt])
+  @@index([createdAt])
+  @@map("users")
+}
+
+// Link external identity providers (google, facebook, etc.) to users
+model UserProvider {
+  id         String   @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId     String   @db.Uuid
+  provider   String // "google", "facebook", "apple", etc.
+  providerId String // External unique id (e.g., Google sub)
+  email      String?
+  name       String?
+  avatar     String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@index([userId])
+  @@index([provider])
+  @@map("user_providers")
+}
+
+// ============================================
+// RBAC (Role-Based Access Control) Domain
+// ============================================
+
+model Role {
+  id          String   @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  name        String   @unique
+  description String?
+  isSystem    Boolean  @default(false) // System roles cannot be deleted
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  permissions RolePermission[]
+  users       UserRole[] // Deprecated: will be removed after migration
+
+  @@index([name])
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  resource    String // Resource name: "user", "role", "organization", etc.
+  action      String // Action: "create", "read", "update", "delete", "*"
+  description String?
+  createdAt   DateTime @default(now())
+
+  // Relations
+  roles RolePermission[]
+
+  @@unique([resource, action])
+  @@index([resource])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String   @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  roleId       String   @db.Uuid
+  permissionId String   @db.Uuid
+  createdAt    DateTime @default(now())
+
+  // Relations
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  id        String   @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId    String   @db.Uuid
+  roleId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+// ============================================
+// Organization Role - REMOVED
+// ============================================
+
+// ============================================
+// Audit Log Domain
+// ============================================
+
+model AuditLog {
+  id String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+
+  // User who performed the action
+  userId    String? @db.Uuid
+  userEmail String? // Stored for reference even if user is deleted
+  userName  String?
+
+  // Action details
+  action     String // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, etc.
+  resource   String // user, role, permission, organization, etc.
+  resourceId String? @db.Uuid
+
+  // Request details
+  method     String? // GET, POST, PUT, DELETE, PATCH
+  endpoint   String? // /api/users/123
+  statusCode Int? // HTTP status code
+
+  // IP and user agent
+  ipAddress String?
+  userAgent String?
+
+  // Data changes
+  oldData Json? // Previous state
+  newData Json? // New state
+
+  // Additional context
+  metadata Json? // Any additional information
+
+  // Timestamp
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([resource])
+  @@index([resourceId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================
+// Password History
+// ============================================
+
+model PasswordHistory {
+  id        String   @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId    String   @db.Uuid
+  hash      String // Bcrypt hash of previous password
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_history")
+}
+
+// ============================================
+// Settings Domain
+// ============================================
+
+// System-wide settings
+model Settings {
+  id    String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  key   String @unique
+  value Json
+
+  // Description and metadata
+  description String?
+  category    String? // redis, email, storage, etc.
+
+  // Status
+  isActive Boolean @default(true)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+  @@index([category])
+  @@index([isActive])
+  @@map("settings")
+}
+
+// Organization-specific settings - REMOVED
+
+// ============================================
+// Media Domain
+// ============================================
+
+model MediaFolder {
+  id          String  @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  name        String // Folder name
+  description String? // Optional description
+  path        String // Full path from root (e.g., "folder1/subfolder1")
+  slug        String // URL-friendly slug
+
+  // Nested folder support
+  parentId String?       @db.Uuid
+  parent   MediaFolder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children MediaFolder[] @relation("FolderHierarchy")
+
+  // Ownership
+  userId String? @db.Uuid
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // Relations
+  media Media[] // Files in this folder
+
+  // Additional metadata
+  metadata Json? // Flexible field for additional data
+  color    String? // Optional color for UI display
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  @@unique([userId, parentId, slug], name: "unique_folder_slug")
+  @@index([userId])
+  @@index([parentId])
+  @@index([path])
+  @@index([slug])
+  @@index([deletedAt])
+  @@map("media_folders")
+}
+
+model Media {
+  id           String  @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  filename     String // Stored filename (usually UUID-based)
+  originalName String // Original filename from upload
+  name         String? // Custom name for the media (optional)
+  mimeType     String // Content type (image/png, video/mp4, etc.)
+  size         Int // File size in bytes
+  path         String // Relative path to file
+  url          String? // Public URL if available
+
+  // File metadata
+  width    Int? // For images/videos
+  height   Int? // For images/videos
+  duration Float? // For videos/audio (in seconds)
+
+  // Folder relationship
+  folderId String?      @db.Uuid
+  folder   MediaFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
+  // Ownership
+  userId String? @db.Uuid
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // Additional metadata
+  metadata Json? // Flexible field for additional data
+
+  // Relations
+  documents Document[]
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  @@index([userId])
+  @@index([folderId])
+  @@index([mimeType])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("media")
+}
+
+// ============================================
+// Payment Webhook Domain
+// ============================================
+
+model SeepayWebhookLog {
+  id String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+
+  // Webhook event details
+  eventType String // payment.success, payment.failed, payment.pending, etc.
+  eventId   String? // Event ID from Seepay
+  status    String // received, processed, failed
+
+  // Request details
+  method    String? // POST
+  endpoint  String? // /api/webhooks/seepay
+  headers   Json? // Request headers
+  body      Json? // Request body from Seepay
+  signature String? // Webhook signature for verification
+
+  // Response details
+  responseStatus Int? // HTTP status code we returned
+  responseBody   Json? // Response body we sent
+
+  // Processing details
+  processedAt  DateTime? // When we processed the webhook
+  errorMessage String?   @db.Text // Error message if processing failed
+  retryCount   Int       @default(0) // Number of retry attempts
+
+  // IP and metadata
+  ipAddress String?
+  userAgent String?
+  metadata  Json? // Additional metadata
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventType])
+  @@index([status])
+  @@index([eventId])
+  @@index([createdAt])
+  @@map("seepay_webhook_logs")
+}
+
+// ============================================
+// Rate Limiting Domain
+// ============================================
+
+model RateLimit {
+  id       String  @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId   String? @db.Uuid // User-specific rate limit (optional)
+  endpoint String // API endpoint pattern
+
+  // Current window counts
+  requestsInMinute Int @default(0)
+  requestsInHour   Int @default(0)
+  requestsInDay    Int @default(0)
+
+  // Window reset times
+  minuteResetAt DateTime
+  hourResetAt   DateTime
+  dayResetAt    DateTime
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, endpoint])
+  @@index([userId])
+  @@index([minuteResetAt])
+  @@index([hourResetAt])
+  @@index([dayResetAt])
+  @@map("rate_limits")
+}
+
+// ============================================
+// Webhook Domain
+// ============================================
+
+enum WebhookDeliveryStatus {
+  PENDING
+  IN_PROGRESS
+  SUCCESS
+  FAILED
+  DISCARDED
+}
+
+model WebhookEndpoint {
+  id          String   @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId      String?  @db.Uuid // User who owns this webhook (optional for system webhooks)
+  url         String // Destination URL
+  description String?  @db.Text
+  secret      String // Shared secret for signing (store plaintext for HMAC)
+  isActive    Boolean  @default(true)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user       User?                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events     WebhookEventSubscription[]
+  deliveries WebhookDelivery[]
+
+  @@index([userId])
+  @@index([isActive])
+  @@map("webhook_endpoints")
+}
+
+model WebhookEventSubscription {
+  id         String   @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  endpointId String   @db.Uuid
+  eventType  String // e.g., user.created, organization.updated
+  createdAt  DateTime @default(now())
+
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@unique([endpointId, eventType])
+  @@index([eventType])
+  @@map("webhook_event_subscriptions")
+}
+
+model WebhookDelivery {
+  id             String                @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  endpointId     String                @db.Uuid
+  eventType      String
+  payload        Json
+  signature      String? // sha256=... signature
+  attempt        Int                   @default(0)
+  maxAttempts    Int                   @default(5)
+  status         WebhookDeliveryStatus @default(PENDING)
+  nextAttemptAt  DateTime?
+  responseStatus Int?
+  responseBody   String?               @db.Text
+  errorMessage   String?               @db.Text
+  durationMs     Int?
+  retryBackoffMs Int?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@index([eventType])
+  @@map("webhook_deliveries")
+}
+
+// ============================================
+// Blacklist Domain
+// ============================================
+
+enum BlacklistType {
+  USER
+  ORGANIZATION
+  EMAIL
+  IP
+  PHONE
+  TOKEN
+}
+
+enum BlacklistStatus {
+  ACTIVE
+  INACTIVE
+  EXPIRED
+}
+
+model Blacklist {
+  id     String          @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  type   BlacklistType // Type of entity to blacklist
+  status BlacklistStatus @default(ACTIVE)
+
+  // Target information
+  targetId String? @db.Uuid // User ID (if applicable)
+  value    String // Email, IP, Phone number, or identifier
+
+  // Details
+  reason      String  @db.Text // Reason for blacklisting
+  description String? @db.Text // Additional details
+
+  // User who created the blacklist
+  createdBy     String? @db.Uuid
+  createdByName String? // Store name for reference
+
+  // Expiration
+  expiresAt DateTime? // Null = permanent blacklist
+
+  // Metadata
+  metadata Json? // Additional data (e.g., related tickets, evidence)
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  @@index([type])
+  @@index([status])
+  @@index([targetId])
+  @@index([value])
+  @@index([createdBy])
+  @@index([expiresAt])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("blacklists")
+}
+
+// ============================================
+// Sidebar Configuration Domain
+// ============================================
+
+model SidebarConfig {
+  id          String  @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  name        String  @unique
+  description String? @db.Text
+
+  // Role targeting
+  roleType String // "system" or "user"
+  roleName String? // Specific role name (null = default for all roles of this type)
+
+  // Menu configuration (stored as JSON)
+  sections Json // Array of MenuSection
+  settings Json? // SidebarSettings object
+
+  // Metadata
+  isSystem Boolean @default(false) // System configs cannot be deleted
+  isActive Boolean @default(true)
+  priority Int     @default(0) // Higher priority wins when multiple configs match
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([roleType, roleName])
+  @@index([roleType])
+  @@index([roleName])
+  @@index([isActive])
+  @@index([priority])
+  @@map("sidebar_configs")
+}
+
+// ============================================
+// Notification Domain
+// ============================================
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+  SYSTEM
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+  ARCHIVED
+}
+
+model Notification {
+  id     String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId String @db.Uuid
+
+  // Notification content
+  type    NotificationType @default(INFO)
+  title   String
+  message String           @db.Text
+  data    Json? // Additional data payload
+
+  // Status
+  status NotificationStatus @default(UNREAD)
+  readAt DateTime?
+
+  // Action link
+  actionUrl   String? // URL to navigate when clicked
+  actionLabel String? // Button/link label
+
+  // Grouping and priority
+  category String? // Category for grouping (e.g., "payment", "user", "system")
+  priority Int     @default(0) // Higher number = higher priority
+
+  // Expiration
+  expiresAt DateTime? // Auto-archive after this time
+
+  // Metadata
+  metadata Json? // Flexible field for additional data
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  // Relations
+  deliveryLogs NotificationDeliveryLog[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([type])
+  @@index([category])
+  @@index([createdAt])
+  @@index([readAt])
+  @@index([expiresAt])
+  @@index([deletedAt])
+  @@index([userId, status, createdAt])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id     String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId String @db.Uuid
+
+  // Channels
+  enableWebSocket Boolean @default(true) // Real-time via WebSocket
+  enableEmail     Boolean @default(true) // Email notifications
+  enablePush      Boolean @default(false) // Push notifications (future)
+
+  // Category preferences
+  categories Json? // {"payment": true, "user": false, ...}
+
+  // Do Not Disturb
+  dndEnabled   Boolean @default(false)
+  dndStartTime String? // HH:mm format
+  dndEndTime   String? // HH:mm format
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId])
+  @@index([userId])
+  @@map("notification_preferences")
+}
+
+// Notification Templates (for email/push notifications)
+model NotificationTemplate {
+  id          String  @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  name        String  @unique // Unique template name (e.g., "payment_success")
+  displayName String // Human-readable name
+  description String? @db.Text
+
+  // Template content
+  subject   String? // For email notifications
+  emailBody String? @db.Text // HTML email body with variables {{var}}
+  pushTitle String? // For push notifications
+  pushBody  String? @db.Text
+  webTitle  String? // For web/WebSocket notifications
+  webBody   String? @db.Text
+
+  // Template variables (for validation)
+  variables Json? // ["userName", "amount", "date", ...]
+
+  // Settings
+  category String? // Template category
+  type     NotificationType @default(INFO)
+  priority Int              @default(0)
+
+  // Status
+  isActive Boolean @default(true)
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?  @db.Uuid
+
+  // Relations
+  deliveryLogs NotificationDeliveryLog[]
+
+  @@index([name])
+  @@index([category])
+  @@index([isActive])
+  @@map("notification_templates")
+}
+
+// Notification Threads (for grouping related notifications)
+model NotificationThread {
+  id     String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId String @db.Uuid
+
+  // Thread info
+  subject  String // Thread subject
+  category String? // Thread category
+
+  // Latest notification info (cached)
+  lastNotificationAt DateTime @default(now())
+  notificationCount  Int      @default(0)
+  unreadCount        Int      @default(0)
+
+  // Status
+  isArchived Boolean   @default(false)
+  archivedAt DateTime?
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  deliveryLogs NotificationDeliveryLog[]
+
+  @@index([userId])
+  @@index([category])
+  @@index([isArchived])
+  @@index([userId, isArchived, lastNotificationAt])
+  @@map("notification_threads")
+}
+
+// Delivery logs (tracking sent → delivered → read)
+enum DeliveryChannel {
+  WEBSOCKET
+  EMAIL
+  PUSH
+  SMS
+}
+
+enum DeliveryStatus {
+  PENDING // Queued for delivery
+  SENT // Successfully sent to provider
+  DELIVERED // Confirmed delivery (email opened, push delivered)
+  READ // User read/interacted
+  FAILED // Failed to deliver
+  BOUNCED // Email bounced
+  UNSUBSCRIBED // User unsubscribed
+}
+
+model NotificationDeliveryLog {
+  id String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+
+  // Target
+  userId String @db.Uuid
+
+  // Source notification
+  notificationId String? @db.Uuid // Reference to Notification table
+  templateId     String? @db.Uuid // Template used
+  threadId       String? @db.Uuid // Thread grouping
+
+  // Content (cached for analytics)
+  title    String
+  message  String           @db.Text
+  type     NotificationType @default(INFO)
+  category String?
+
+  // Delivery info
+  channel   DeliveryChannel
+  status    DeliveryStatus  @default(PENDING)
+  recipient String // Email address or device token
+
+  // Tracking
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
+  failedAt    DateTime?
+
+  // Error tracking
+  errorMessage String?   @db.Text
+  retryCount   Int       @default(0)
+  maxRetries   Int       @default(3)
+  nextRetryAt  DateTime?
+
+  // Provider info
+  provider         String? // smtp, fcm, apns, etc.
+  providerId       String? // External provider message ID
+  providerResponse Json? // Provider response data
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  notification Notification?         @relation(fields: [notificationId], references: [id], onDelete: SetNull)
+  template     NotificationTemplate? @relation(fields: [templateId], references: [id])
+  thread       NotificationThread?   @relation(fields: [threadId], references: [id])
+
+  @@index([userId])
+  @@index([notificationId])
+  @@index([templateId])
+  @@index([threadId])
+  @@index([channel])
+  @@index([status])
+  @@index([category])
+  @@index([createdAt])
+  @@index([sentAt])
+  @@index([deliveredAt])
+  @@index([readAt])
+  @@index([nextRetryAt])
+  @@index([userId, channel, status])
+  @@index([status, nextRetryAt]) // For retry jobs
+  @@map("notification_delivery_logs")
+}
+
+// FCM/APNS Device Tokens (for push notifications)
+model NotificationDeviceToken {
+  id     String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId String @db.Uuid
+
+  // Device info
+  token      String  @unique // FCM or APNS token
+  platform   String // ios, android, web
+  deviceId   String? // Device identifier
+  deviceName String? // User-friendly device name
+
+  // Status
+  isActive   Boolean  @default(true)
+  lastUsedAt DateTime @default(now())
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([token])
+  @@index([platform])
+  @@index([isActive])
+  @@index([userId, isActive])
+  @@map("notification_device_tokens")
+}
+
+// ============================================
+// Device Management & Session Tracking
+// ============================================
+
+model UserDevice {
+  id     String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Device identification
+  deviceId   String  @unique // Unique device identifier (hash of fingerprint)
+  deviceName String? // Custom device name set by user
+
+  // Device info
+  os             String? // Operating System (Windows, macOS, iOS, Android, Linux)
+  osVersion      String? // OS version
+  browser        String? // Browser name (Chrome, Safari, Firefox, etc.)
+  browserVersion String? // Browser version
+  deviceType     String? // Device type (desktop, mobile, tablet)
+
+  // Location & Network
+  ip        String? // IP address
+  country   String? // Country from IP
+  city      String? // City from IP
+  userAgent String? @db.Text // Full user agent string
+
+  // Session info
+  firstSeenAt DateTime  @default(now()) // First time this device was used
+  lastSeenAt  DateTime  @default(now()) // Last activity time
+  lastLoginAt DateTime? // Last successful login
+
+  // Status
+  isActive  Boolean @default(true) // Can be revoked by user
+  isTrusted Boolean @default(false) // Trusted devices skip 2FA
+  isBlocked Boolean @default(false) // Block suspicious devices
+
+  // Security
+  failedLoginAttempts Int       @default(0) // Track failed login attempts
+  lastFailedLoginAt   DateTime? // Last failed login time
+  blockedAt           DateTime? // When device was blocked
+  blockedReason       String?   @db.Text // Reason for blocking
+
+  // Metadata
+  metadata Json? // Additional device info
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  sessions UserSession[]
+
+  @@index([userId])
+  @@index([deviceId])
+  @@index([isActive])
+  @@index([isBlocked])
+  @@index([lastSeenAt])
+  @@index([userId, isActive])
+  @@map("user_devices")
+}
+
+// Session Management
+enum SessionStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+  LOGGED_OUT
+}
+
+model UserSession {
+  id       String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId   String @db.Uuid
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId String @db.Uuid
+
+  // Session identification
+  token        String  @unique @db.Text // JWT token or session identifier
+  refreshToken String? @unique @db.Text // Refresh token (if applicable)
+
+  // Session info
+  status    SessionStatus @default(ACTIVE)
+  ipAddress String? // IP at session creation
+  userAgent String?       @db.Text // User agent at session creation
+
+  // Location
+  country String? // Location from IP
+  city    String?
+
+  // Activity tracking
+  lastActivityAt DateTime @default(now()) // Last API request time
+  activityCount  Int      @default(0) // Number of requests in this session
+
+  // Session lifecycle
+  startedAt    DateTime  @default(now()) // Session start time
+  expiresAt    DateTime // Token expiration time
+  revokedAt    DateTime? // When session was revoked
+  revokeReason String?   @db.Text // Reason for revocation
+  loggedOutAt  DateTime? // When user logged out
+
+  // Security flags
+  isRenewed   Boolean @default(false) // Whether session was renewed
+  renewedFrom String? @db.Uuid // Previous session ID if renewed
+
+  // Metadata
+  metadata Json? // Additional session data (e.g., login method, 2FA used)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  device UserDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([deviceId])
+  @@index([token])
+  @@index([refreshToken])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([lastActivityAt])
+  @@index([userId, status])
+  @@index([status, expiresAt]) // For cleanup jobs
+  @@map("user_sessions")
+}
+
+// ============================================
+// Sensitive Action Verification
+// ============================================
+
+enum SensitiveActionType {
+  EMAIL_CHANGE
+  PASSWORD_CHANGE
+  ACCOUNT_DELETE
+  DEVICE_ADD
+}
+
+model SensitiveActionVerification {
+  id        String              @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId    String              @db.Uuid
+  action    SensitiveActionType
+  token     String              @unique
+  code      String? // Optional 6-digit code
+  payload   Json? // Additional context (new email, device info)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([action])
+  @@index([expiresAt])
+  @@map("sensitive_action_verifications")
+}
+
+// ============================================
+// Multi-Service Domain (Xe Công Nghệ - Đa Dịch Vụ)
+// ============================================
+
+// Service Types
+enum ServiceType {
+  RIDE // Chở người
+  FOOD_DELIVERY // Giao đồ ăn
+  PARCEL // Giao hàng
+  GROCERY // Giao thực phẩm
+  OTHER // Dịch vụ khác
+}
+
+// Driver Management
+enum DriverStatus {
+  PENDING // Đang chờ xác thực
+  VERIFIED // Đã xác thực
+  ACTIVE // Đang hoạt động
+  OFFLINE // Không online
+  ON_RIDE // Đang có chuyến
+  ON_DELIVERY // Đang giao hàng
+  SUSPENDED // Tạm ngưng
+  REJECTED // Bị từ chối
+}
+
+enum DriverVerificationStatus {
+  PENDING // Chờ xác thực
+  VERIFIED // Đã xác thực
+  REJECTED // Bị từ chối
+  EXPIRED // Hết hạn
+}
+
+model Driver {
+  id     String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId String @unique @db.Uuid // Link to User
+  user   User   @relation("DriverUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  // Personal Information
+  fullName    String
+  phone       String    @unique
+  email       String?   @unique
+  dateOfBirth DateTime?
+  address     String?   @db.Text
+  city        String?
+  province    String?
+
+  // Driver License
+  licenseNumber String?   @unique // Số bằng lái xe
+  licenseExpiry DateTime?
+  // Document URLs are stored in Document table, not here
+
+  // ID Card (CMND/CCCD)
+  idCardNumber String? @unique // Số CMND/CCCD
+  // Document URLs are stored in Document table, not here
+
+  // Verification
+  status             DriverStatus             @default(PENDING)
+  verificationStatus DriverVerificationStatus @default(PENDING)
+  verifiedAt         DateTime?
+  verifiedBy         String?                  @db.Uuid // Admin who verified
+  rejectionReason    String?                  @db.Text
+
+  // Bank Account (for payments)
+  bankName      String?
+  bankAccount   String?
+  accountHolder String?
+
+  // Driver License Type (Loại bằng lái của tài xế)
+  licenseTypeId String?      @db.Uuid // Reference to LicenseType
+  licenseType   LicenseType? @relation("DriverLicenseType", fields: [licenseTypeId], references: [id], onDelete: SetNull)
+
+  // Service Capabilities
+  serviceTypes Json? // Array of ServiceType: ["RIDE", "FOOD_DELIVERY", ...]
+
+  // Statistics
+  totalRides      Int     @default(0)
+  totalOrders     Int     @default(0) // Tổng số đơn giao đồ ăn
+  completedRides  Int     @default(0)
+  completedOrders Int     @default(0)
+  cancelledRides  Int     @default(0)
+  cancelledOrders Int     @default(0)
+  averageRating   Float   @default(0)
+  totalEarnings   Decimal @default(0) @db.Decimal(12, 2)
+
+  // Status
+  isActive     Boolean   @default(true)
+  isOnline     Boolean   @default(false) // Trạng thái online/offline
+  lastOnlineAt DateTime?
+
+  // Current Location (updated frequently)
+  latitude          Decimal?  @db.Decimal(10, 8) // Vĩ độ hiện tại
+  longitude         Decimal?  @db.Decimal(11, 8) // Kinh độ hiện tại
+  heading           Float? // Hướng di chuyển (0-360 degrees)
+  speed             Float? // Tốc độ hiện tại (km/h)
+  locationUpdatedAt DateTime? // Thời gian cập nhật location cuối cùng
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  // Relations
+  vehicles  Vehicle[]
+  rides     Ride[]
+  orders    Order[]
+  ratings   Rating[]         @relation("DriverRating")
+  locations DriverLocation[]
+  documents Document[]       @relation("DriverDocuments")
+  wallet    Wallet?          @relation("DriverWallet")
+
+  @@index([userId])
+  @@index([phone])
+  @@index([email])
+  @@index([status])
+  @@index([verificationStatus])
+  @@index([isActive])
+  @@index([isOnline])
+  @@index([deletedAt])
+  @@index([createdAt])
+  @@index([latitude, longitude]) // Index for nearby driver queries
+  @@index([isOnline, status, latitude, longitude]) // Composite index for active online drivers
+  @@index([licenseTypeId])
+  @@map("drivers")
+}
+
+// Vehicle Type Management
+model VehicleType {
+  id           String  @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  code         String  @unique // Mã loại xe (e.g., "MOTORBIKE", "CAR_4_SEATS")
+  name         String // Tên loại xe (e.g., "Xe máy", "Xe ô tô 4 chỗ")
+  nameEn       String? // Tên tiếng Anh
+  description  String? @db.Text
+  icon         String? // Icon URL hoặc class name
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
+
+  // Relations
+  vehicles Vehicle[] @relation("VehicleTypeRef")
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  @@index([code])
+  @@index([isActive])
+  @@index([displayOrder])
+  @@index([deletedAt])
+  @@map("vehicle_types")
+}
+
+// Vehicle Brand Management
+model VehicleBrand {
+  id                  String  @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  code                String  @unique // Mã nhãn hiệu (e.g., "HONDA", "TOYOTA", "YAMAHA")
+  name                String // Tên nhãn hiệu (e.g., "Honda", "Toyota", "Yamaha")
+  nameEn              String? // Tên tiếng Anh
+  logo                String? // Logo URL
+  country             String? // Quốc gia (e.g., "Japan", "Vietnam")
+  description         String? @db.Text
+  vehicleTypesAllowed Json? // Các loại xe được phép sử dụng nhãn hiệu này (array of vehicle type codes)
+  displayOrder        Int     @default(0)
+  isActive            Boolean @default(true)
+
+  // Relations
+  vehicles Vehicle[] @relation("VehicleBrandRef")
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  @@index([code])
+  @@index([isActive])
+  @@index([displayOrder])
+  @@index([deletedAt])
+  @@map("vehicle_brands")
+}
+
+// License Type Management (Loại bằng lái Việt Nam)
+model LicenseType {
+  id                  String  @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  code                String  @unique // Mã loại bằng (e.g., "A1", "A2", "B1", "B2", "C", "D", "E", "F")
+  name                String // Tên loại bằng (e.g., "A1 - Xe mô tô hai bánh có dung tích xi-lanh từ 50cm³ đến dưới 175cm³")
+  nameEn              String? // Tên tiếng Anh
+  description         String? @db.Text
+  vehicleTypesAllowed Json? // Các loại xe được phép lái (array of vehicle type codes)
+  minAge              Int? // Độ tuổi tối thiểu
+  maxAge              Int? // Độ tuổi tối đa
+  validityYears       Int? // Số năm hiệu lực
+  displayOrder        Int     @default(0)
+  isActive            Boolean @default(true)
+
+  // Relations
+  drivers Driver[] @relation("DriverLicenseType")
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  @@index([code])
+  @@index([isActive])
+  @@index([displayOrder])
+  @@index([deletedAt])
+  @@map("license_types")
+}
+
+// Vehicle Management
+enum VehicleTypeEnum {
+  MOTORBIKE // Xe máy
+  CAR_4_SEATS // Xe 4 chỗ
+  CAR_7_SEATS // Xe 7 chỗ
+  CAR_16_SEATS // Xe 16 chỗ
+  VAN // Xe tải nhỏ
+  ELECTRIC_CAR // Xe Ô tô Điện
+}
+
+enum VehicleStatus {
+  AVAILABLE // Sẵn sàng
+  IN_USE // Đang sử dụng
+  MAINTENANCE // Bảo trì
+  INACTIVE // Không hoạt động
+}
+
+enum VehicleVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+model Vehicle {
+  id       String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  driverId String @db.Uuid
+  driver   Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  // Vehicle Information
+  type               VehicleTypeEnum
+  typeId             String?         @db.Uuid // Reference to VehicleType table
+  typeRef            VehicleType?    @relation("VehicleTypeRef", fields: [typeId], references: [id], onDelete: SetNull)
+  brandId            String?         @db.Uuid // Reference to VehicleBrand table
+  brand              VehicleBrand?   @relation("VehicleBrandRef", fields: [brandId], references: [id], onDelete: SetNull)
+  model              String? // Model xe
+  year               Int?
+  color              String?
+  plateNumber        String          @unique // Biển số xe
+  registrationNumber String?         @unique // Số đăng ký
+
+  // Documents
+  registrationFrontUrl String? // Ảnh mặt trước đăng ký
+  registrationBackUrl  String? // Ảnh mặt sau đăng ký
+  insuranceUrl         String? // Ảnh bảo hiểm
+  inspectionUrl        String? // Ảnh đăng kiểm
+
+  // Verification
+  verificationStatus VehicleVerificationStatus @default(PENDING)
+  verifiedAt         DateTime?
+  verifiedBy         String?                   @db.Uuid
+  rejectionReason    String?                   @db.Text
+
+  // Status
+  status   VehicleStatus @default(INACTIVE)
+  isActive Boolean       @default(true)
+
+  // Images
+  images Json? // Array of image URLs
+
+  // Statistics
+  totalRides Int     @default(0)
+  totalKm    Decimal @default(0) @db.Decimal(10, 2)
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  // Relations
+  rides     Ride[]
+  locations VehicleLocation[]
+
+  @@index([driverId])
+  @@index([typeId])
+  @@index([brandId])
+  @@index([plateNumber])
+  @@index([registrationNumber])
+  @@index([status])
+  @@index([verificationStatus])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("vehicles")
+}
+
+// Ride Booking System
+enum RideStatus {
+  PENDING // Chờ tài xế nhận
+  ACCEPTED // Tài xế đã nhận
+  DRIVER_ARRIVED // Tài xế đã đến
+  IN_PROGRESS // Đang di chuyển
+  COMPLETED // Hoàn thành
+  CANCELLED // Đã hủy
+  NO_SHOW // Khách không có mặt
+}
+
+enum RideType {
+  IMMEDIATE // Đặt ngay
+  SCHEDULED // Đặt trước
+}
+
+enum PaymentMethod {
+  CASH // Tiền mặt
+  CARD // Thẻ
+  WALLET // Ví điện tử
+  BANK_TRANSFER // Chuyển khoản
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+  FAILED
+}
+
+model Ride {
+  id        String   @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId    String   @db.Uuid // Khách hàng
+  user      User     @relation("RideUser", fields: [userId], references: [id], onDelete: Restrict)
+  driverId  String?  @db.Uuid // Tài xế
+  driver    Driver?  @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  vehicleId String?  @db.Uuid
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+
+  // Ride Type
+  type        RideType  @default(IMMEDIATE)
+  scheduledAt DateTime? // Cho scheduled rides
+
+  // Pickup Location
+  pickupLatitude  Decimal @db.Decimal(10, 8)
+  pickupLongitude Decimal @db.Decimal(11, 8)
+  pickupAddress   String  @db.Text
+  pickupNote      String? @db.Text
+
+  // Destination
+  destinationLatitude  Decimal @db.Decimal(10, 8)
+  destinationLongitude Decimal @db.Decimal(11, 8)
+  destinationAddress   String  @db.Text
+  destinationNote      String? @db.Text
+
+  // Route Information
+  estimatedDistance Decimal? @db.Decimal(10, 2) // km
+  actualDistance    Decimal? @db.Decimal(10, 2) // km
+  estimatedDuration Int? // minutes
+  actualDuration    Int? // minutes
+  estimatedPrice    Decimal? @db.Decimal(12, 2)
+  actualPrice       Decimal? @db.Decimal(12, 2)
+
+  // Status
+  status RideStatus @default(PENDING)
+
+  // Timestamps
+  requestedAt     DateTime  @default(now())
+  acceptedAt      DateTime?
+  driverArrivedAt DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  cancelledBy     String? // "user" | "driver" | "system"
+  cancelReason    String?   @db.Text
+
+  // Payment
+  paymentMethod PaymentMethod?
+  paymentStatus PaymentStatus  @default(PENDING)
+  paidAt        DateTime?
+
+  // Revenue Sharing
+  platformFee   Decimal? @db.Decimal(12, 2) // Phí nền tảng
+  driverEarning Decimal? @db.Decimal(12, 2) // Thu nhập tài xế
+
+  // Rating
+  userRating    Int? // Đánh giá của khách cho tài xế (1-5)
+  driverRating  Int? // Đánh giá của tài xế cho khách (1-5)
+  userComment   String? @db.Text
+  driverComment String? @db.Text
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  locations           RideLocation[]
+  ratings             Rating[]             @relation("RideRating")
+  paymentTransactions PaymentTransaction[]
+
+  @@index([userId])
+  @@index([driverId])
+  @@index([vehicleId])
+  @@index([status])
+  @@index([type])
+  @@index([requestedAt])
+  @@index([completedAt])
+  @@index([paymentStatus])
+  @@index([userId, status])
+  @@index([driverId, status])
+  @@map("rides")
+}
+
+// Location Tracking
+model DriverLocation {
+  id       String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  driverId String @db.Uuid
+  driver   Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  latitude  Decimal @db.Decimal(10, 8)
+  longitude Decimal @db.Decimal(11, 8)
+  heading   Float? // Direction in degrees (0-360)
+  speed     Float? // Speed in km/h
+  accuracy  Float? // GPS accuracy in meters
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  @@index([driverId])
+  @@index([createdAt])
+  @@index([driverId, createdAt])
+  @@map("driver_locations")
+}
+
+model VehicleLocation {
+  id        String  @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  vehicleId String  @db.Uuid
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  latitude  Decimal @db.Decimal(10, 8)
+  longitude Decimal @db.Decimal(11, 8)
+  heading   Float?
+  speed     Float?
+  accuracy  Float?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  @@index([vehicleId])
+  @@index([createdAt])
+  @@map("vehicle_locations")
+}
+
+model RideLocation {
+  id     String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  rideId String @db.Uuid
+  ride   Ride   @relation(fields: [rideId], references: [id], onDelete: Cascade)
+
+  latitude  Decimal @db.Decimal(10, 8)
+  longitude Decimal @db.Decimal(11, 8)
+  heading   Float?
+  speed     Float?
+  accuracy  Float?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  @@index([rideId])
+  @@index([createdAt])
+  @@map("ride_locations")
+}
+
+// Rating & Review
+enum RatedType {
+  DRIVER
+  MERCHANT
+  USER
+}
+
+model Rating {
+  id String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+
+  // Service Type
+  serviceType ServiceType @default(RIDE) // RIDE, FOOD_DELIVERY, etc.
+
+  // Related Service (only one of rideId or orderId should be set)
+  rideId  String? @db.Uuid
+  ride    Ride?   @relation("RideRating", fields: [rideId], references: [id], onDelete: Cascade)
+  orderId String? @db.Uuid
+  order   Order?  @relation("OrderRating", fields: [orderId], references: [id], onDelete: Cascade)
+
+  // Who rated whom
+  raterId   String    @db.Uuid // User who gave the rating
+  rater     User      @relation("RaterUser", fields: [raterId], references: [id], onDelete: Cascade)
+  ratedId   String    @db.Uuid // Driver, User, or Merchant being rated
+  ratedType RatedType // "driver" | "user" | "merchant"
+
+  // Rating (1-5 stars, validated by check constraint in migration)
+  rating  Int // 1-5 stars
+  comment String? @db.Text
+
+  // Specific ratings
+  driverRatingId   String?   @db.Uuid
+  driver           Driver?   @relation("DriverRating", fields: [driverRatingId], references: [id], onDelete: SetNull)
+  merchantRatingId String?   @db.Uuid
+  merchant         Merchant? @relation("MerchantRating", fields: [merchantRatingId], references: [id], onDelete: SetNull)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([rideId])
+  @@index([orderId])
+  @@index([raterId])
+  @@index([ratedId])
+  @@index([driverRatingId])
+  @@index([merchantRatingId])
+  @@index([ratedType])
+  @@index([serviceType])
+  @@index([createdAt])
+  @@map("ratings")
+}
+
+// Pricing Configuration
+model PricingRule {
+  id String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+
+  // Service Type
+  serviceType ServiceType @default(RIDE)
+
+  // Vehicle Type (for RIDE service)
+  vehicleType VehicleTypeEnum?
+
+  // Base Pricing
+  baseFare      Decimal @db.Decimal(12, 2) // Giá cơ bản
+  perKmRate     Decimal @db.Decimal(12, 2) // Giá mỗi km
+  perMinuteRate Decimal @db.Decimal(12, 2) // Giá mỗi phút
+
+  // Minimums
+  minimumFare     Decimal @db.Decimal(12, 2) // Giá tối thiểu
+  minimumDistance Decimal @db.Decimal(10, 2) // km
+
+  // Surge Pricing
+  surgeMultiplier Decimal @default(1) @db.Decimal(4, 2) // Hệ số tăng giá
+
+  // Time-based pricing
+  nightTimeStart  String? // "22:00"
+  nightTimeEnd    String? // "06:00"
+  nightMultiplier Decimal @default(1) @db.Decimal(4, 2)
+
+  // Status
+  isActive Boolean @default(true)
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Unique constraint: Only one active rule per serviceType + vehicleType combination
+  // Note: This allows multiple inactive rules but only one active rule
+  @@unique([serviceType, vehicleType], name: "pricing_rules_service_vehicle_unique")
+  @@index([serviceType])
+  @@index([vehicleType])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@index([serviceType, vehicleType, isActive]) // Composite index for common queries
+  @@map("pricing_rules")
+}
+
+// Revenue Sharing Configuration
+model RevenueShare {
+  id String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+
+  // Service Type
+  serviceType ServiceType?
+
+  // Platform fee percentage
+  platformFeePercent   Decimal  @db.Decimal(5, 2) // e.g., 20.00 = 20%
+  driverSharePercent   Decimal  @db.Decimal(5, 2) // e.g., 80.00 = 80%
+  merchantSharePercent Decimal? @db.Decimal(5, 2) // e.g., 85.00 = 85% (for food delivery)
+
+  // Status
+  isActive Boolean @default(true)
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([serviceType])
+  @@index([isActive])
+  @@map("revenue_shares")
+}
+
+// ============================================
+// Food Delivery Domain (Giao Đồ Ăn)
+// ============================================
+
+// Merchant/Restaurant Management
+enum MerchantStatus {
+  PENDING // Chờ xác thực
+  VERIFIED // Đã xác thực
+  ACTIVE // Đang hoạt động
+  INACTIVE // Tạm ngưng
+  SUSPENDED // Bị tạm ngưng
+  REJECTED // Bị từ chối
+}
+
+enum MerchantVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+model Merchant {
+  id     String  @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId String? @unique @db.Uuid // Link to User (owner)
+  user   User?   @relation("MerchantUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  // Business Information
+  name        String
+  slug        String  @unique // URL-friendly name
+  description String? @db.Text
+  phone       String  @unique
+  email       String? @unique
+  address     String  @db.Text
+  city        String?
+  province    String?
+  district    String?
+  ward        String?
+
+  // Location
+  latitude  Decimal? @db.Decimal(10, 8)
+  longitude Decimal? @db.Decimal(11, 8)
+
+  // Business Details
+  businessLicense String? @unique // Giấy phép kinh doanh
+  taxCode         String? @unique // Mã số thuế
+  bankName        String?
+  bankAccount     String?
+  accountHolder   String?
+
+  // Images
+  logoUrl       String? // Logo nhà hàng
+  coverImageUrl String? // Ảnh bìa
+  images        Json? // Array of image URLs
+
+  // Verification
+  status             MerchantStatus             @default(PENDING)
+  verificationStatus MerchantVerificationStatus @default(PENDING)
+  verifiedAt         DateTime?
+  verifiedBy         String?                    @db.Uuid
+  rejectionReason    String?                    @db.Text
+
+  // Operating Hours
+  operatingHours Json? // {"monday": {"open": "08:00", "close": "22:00"}, ...}
+
+  // Delivery Settings
+  deliveryRadius    Decimal? @db.Decimal(10, 2) // km
+  minOrderAmount    Decimal? @db.Decimal(12, 2) // Đơn hàng tối thiểu
+  deliveryFee       Decimal? @db.Decimal(12, 2) // Phí giao hàng cố định
+  estimatedPrepTime Int? // Thời gian chuẩn bị ước tính (phút)
+
+  // Statistics
+  totalOrders     Int     @default(0)
+  completedOrders Int     @default(0)
+  cancelledOrders Int     @default(0)
+  averageRating   Float   @default(0)
+  totalRevenue    Decimal @default(0) @db.Decimal(12, 2)
+
+  // Status
+  isActive Boolean @default(true)
+  isOpen   Boolean @default(false) // Đang mở cửa
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  // Relations
+  products  Product[]
+  orders    Order[]
+  ratings   Rating[]           @relation("MerchantRating")
+  locations MerchantLocation[]
+
+  @@index([userId])
+  @@index([phone])
+  @@index([email])
+  @@index([slug])
+  @@index([status])
+  @@index([verificationStatus])
+  @@index([isActive])
+  @@index([isOpen])
+  @@index([city])
+  @@index([deletedAt])
+  @@index([createdAt])
+  @@map("merchants")
+}
+
+// Product/Item Management
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+  OUT_OF_STOCK
+}
+
+model Product {
+  id         String   @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  merchantId String   @db.Uuid
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  // Product Information
+  name        String
+  description String? @db.Text
+  price       Decimal @db.Decimal(12, 2)
+  imageUrl    String? // Ảnh món ăn
+  images      Json? // Array of image URLs
+
+  // Category
+  category String? // Danh mục: "Đồ ăn", "Đồ uống", "Tráng miệng", etc.
+
+  // Status
+  status      ProductStatus @default(ACTIVE)
+  isAvailable Boolean       @default(true)
+
+  // Options & Variants
+  variants Json? // {"size": ["S", "M", "L"], "topping": [...]}
+  options  Json? // Additional options
+
+  // Statistics
+  totalSold     Int   @default(0)
+  averageRating Float @default(0)
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  // Relations
+  orderItems OrderItem[]
+
+  @@index([merchantId])
+  @@index([category])
+  @@index([status])
+  @@index([isAvailable])
+  @@index([deletedAt])
+  @@map("products")
+}
+
+// Order Management (Food Delivery)
+enum OrderStatus {
+  PENDING // Chờ xác nhận
+  CONFIRMED // Đã xác nhận
+  PREPARING // Đang chuẩn bị
+  READY // Sẵn sàng giao
+  ASSIGNED // Đã gán tài xế
+  PICKED_UP // Tài xế đã lấy hàng
+  IN_TRANSIT // Đang giao hàng
+  DELIVERED // Đã giao
+  COMPLETED // Hoàn thành
+  CANCELLED // Đã hủy
+  REFUNDED // Đã hoàn tiền
+}
+
+enum OrderType {
+  IMMEDIATE // Đặt ngay
+  SCHEDULED // Đặt trước
+}
+
+model Order {
+  id         String   @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId     String   @db.Uuid // Khách hàng
+  user       User     @relation("OrderUser", fields: [userId], references: [id], onDelete: Restrict)
+  merchantId String   @db.Uuid
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  driverId   String?  @db.Uuid // Tài xế giao hàng
+  driver     Driver?  @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  // Order Type
+  type        OrderType @default(IMMEDIATE)
+  scheduledAt DateTime? // Cho scheduled orders
+
+  // Order Information
+  // Note: orderNumber should be generated using sequence or application-level logic
+  // Format: "ORD-YYYYMMDD-XXXXX" where XXXXX is sequential number
+  orderNumber String  @unique // Mã đơn hàng (e.g., "ORD-20250101-001")
+  subtotal    Decimal @db.Decimal(12, 2) // Tổng tiền món ăn
+  deliveryFee Decimal @db.Decimal(12, 2) // Phí giao hàng
+  discount    Decimal @default(0) @db.Decimal(12, 2) // Giảm giá
+  totalAmount Decimal @db.Decimal(12, 2) // Tổng tiền
+
+  // Delivery Address
+  deliveryLatitude  Decimal @db.Decimal(10, 8)
+  deliveryLongitude Decimal @db.Decimal(11, 8)
+  deliveryAddress   String  @db.Text
+  deliveryNote      String? @db.Text
+  recipientName     String?
+  recipientPhone    String?
+
+  // Route Information
+  estimatedDistance Decimal? @db.Decimal(10, 2) // km
+  actualDistance    Decimal? @db.Decimal(10, 2) // km
+  estimatedDuration Int? // minutes
+  actualDuration    Int? // minutes
+
+  // Status
+  status OrderStatus @default(PENDING)
+
+  // Timestamps
+  requestedAt  DateTime  @default(now())
+  confirmedAt  DateTime?
+  preparingAt  DateTime?
+  readyAt      DateTime?
+  assignedAt   DateTime?
+  pickedUpAt   DateTime?
+  inTransitAt  DateTime?
+  deliveredAt  DateTime?
+  completedAt  DateTime?
+  cancelledAt  DateTime?
+  cancelledBy  String? // "user" | "merchant" | "driver" | "system"
+  cancelReason String?   @db.Text
+
+  // Payment
+  paymentMethod PaymentMethod?
+  paymentStatus PaymentStatus  @default(PENDING)
+  paidAt        DateTime?
+
+  // Revenue Sharing
+  platformFee     Decimal? @db.Decimal(12, 2) // Phí nền tảng
+  merchantEarning Decimal? @db.Decimal(12, 2) // Thu nhập nhà hàng
+  driverEarning   Decimal? @db.Decimal(12, 2) // Thu nhập tài xế
+
+  // Rating
+  userRating     Int? // Đánh giá của khách (1-5)
+  merchantRating Int? // Đánh giá của khách cho nhà hàng (1-5)
+  driverRating   Int? // Đánh giá của khách cho tài xế (1-5)
+  userComment    String? @db.Text
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  items               OrderItem[]
+  locations           OrderLocation[]
+  ratings             Rating[]             @relation("OrderRating")
+  paymentTransactions PaymentTransaction[]
+  orderDiscounts      OrderDiscount[]
+
+  @@index([userId])
+  @@index([merchantId])
+  @@index([driverId])
+  @@index([orderNumber])
+  @@index([status])
+  @@index([type])
+  @@index([requestedAt])
+  @@index([completedAt])
+  @@index([paymentStatus])
+  @@index([userId, status])
+  @@index([merchantId, status])
+  @@index([driverId, status])
+  @@map("orders")
+}
+
+// Order Items
+model OrderItem {
+  id        String  @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  orderId   String  @db.Uuid
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String  @db.Uuid
+  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  // Item Details
+  quantity  Int
+  unitPrice Decimal @db.Decimal(12, 2) // Giá tại thời điểm đặt hàng
+  subtotal  Decimal @db.Decimal(12, 2) // quantity * unitPrice
+
+  // Variants & Options
+  selectedVariants Json? // {"size": "L", "topping": ["phô mai", "thịt bò"]}
+  notes            String? @db.Text
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+// Location Tracking for Orders
+model OrderLocation {
+  id      String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  orderId String @db.Uuid
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  latitude  Decimal @db.Decimal(10, 8)
+  longitude Decimal @db.Decimal(11, 8)
+  heading   Float?
+  speed     Float?
+  accuracy  Float?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([createdAt])
+  @@map("order_locations")
+}
+
+// Merchant Location Tracking
+model MerchantLocation {
+  id         String   @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  merchantId String   @db.Uuid
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  latitude  Decimal @db.Decimal(10, 8)
+  longitude Decimal @db.Decimal(11, 8)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  @@index([merchantId])
+  @@index([createdAt])
+  @@map("merchant_locations")
+}
+
+// ============================================
+// Payment Transaction Domain
+// ============================================
+
+enum TransactionType {
+  PAYMENT // Thanh toán
+  REFUND // Hoàn tiền
+  PARTIAL_REFUND // Hoàn tiền một phần
+  ADJUSTMENT // Điều chỉnh
+}
+
+enum TransactionStatus {
+  PENDING // Đang chờ xử lý
+  PROCESSING // Đang xử lý
+  COMPLETED // Hoàn thành
+  FAILED // Thất bại
+  CANCELLED // Đã hủy
+  REFUNDED // Đã hoàn tiền
+}
+
+model PaymentTransaction {
+  id String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+
+  // Related Order or Ride
+  orderId String? @db.Uuid
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  rideId  String? @db.Uuid
+  ride    Ride?   @relation(fields: [rideId], references: [id], onDelete: SetNull)
+
+  // Transaction details
+  transactionNumber String            @unique // Mã giao dịch (e.g., "TXN-20250101-001")
+  type              TransactionType
+  status            TransactionStatus @default(PENDING)
+  amount            Decimal           @db.Decimal(12, 2) // Số tiền (âm nếu là refund)
+  currency          String            @default("VND")
+  paymentMethod     PaymentMethod
+
+  // Payment provider info
+  provider         String? // "seepay", "vnpay", "momo", etc.
+  providerId       String? // Transaction ID từ provider
+  providerResponse Json? // Response từ provider
+
+  // Refund info (if applicable)
+  refundReason String?   @db.Text
+  refundedAt   DateTime?
+
+  // Metadata
+  metadata Json? // Additional transaction data
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  @@index([orderId])
+  @@index([rideId])
+  @@index([transactionNumber])
+  @@index([type])
+  @@index([status])
+  @@index([provider])
+  @@index([providerId])
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@map("payment_transactions")
+}
+
+// ============================================
+// User Address Domain
+// ============================================
+
+model UserAddress {
+  id     String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Address details
+  label          String? // "Nhà", "Công ty", "Khác", etc.
+  recipientName  String
+  recipientPhone String
+  address        String  @db.Text
+  city           String?
+  province       String?
+  district       String?
+  ward           String?
+
+  // Location
+  latitude  Decimal? @db.Decimal(10, 8)
+  longitude Decimal? @db.Decimal(11, 8)
+
+  // Status
+  isDefault Boolean @default(false) // Địa chỉ mặc định
+  isActive  Boolean @default(true)
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  @@index([userId])
+  @@index([isDefault])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@index([userId, isDefault])
+  @@map("user_addresses")
+}
+
+// User Favorite Location (Địa điểm thường sử dụng)
+model UserFavoriteLocation {
+  id     String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Location details
+  name     String // Tên địa điểm (e.g., "Nhà", "Công ty", "Trường học")
+  address  String  @db.Text // Địa chỉ đầy đủ
+  city     String?
+  province String?
+  district String?
+  ward     String?
+
+  // Location coordinates
+  latitude  Decimal @db.Decimal(10, 8) // Vĩ độ (bắt buộc)
+  longitude Decimal @db.Decimal(11, 8) // Kinh độ (bắt buộc)
+
+  // Type of location (optional - để phân loại)
+  locationType String? // "home", "work", "school", "other", etc.
+
+  // Display order (để sắp xếp thứ tự hiển thị)
+  displayOrder Int @default(0)
+
+  // Status
+  isActive Boolean @default(true)
+
+  // Metadata
+  metadata Json? // Flexible field for additional data
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  @@index([userId])
+  @@index([isActive])
+  @@index([displayOrder])
+  @@index([deletedAt])
+  @@index([userId, isActive])
+  @@map("user_favorite_locations")
+}
+
+// ============================================
+// Promotion & Coupon Domain
+// ============================================
+
+enum PromotionType {
+  PERCENTAGE // Giảm theo phần trăm
+  FIXED_AMOUNT // Giảm số tiền cố định
+  FREE_SHIPPING // Miễn phí vận chuyển
+}
+
+enum PromotionStatus {
+  ACTIVE
+  INACTIVE
+  EXPIRED
+  SCHEDULED // Chưa bắt đầu
+}
+
+enum CouponStatus {
+  ACTIVE
+  USED
+  EXPIRED
+  DISABLED
+}
+
+model Promotion {
+  id String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+
+  // Promotion details
+  name        String
+  description String?       @db.Text
+  code        String        @unique // Mã khuyến mãi (e.g., "SUMMER2025")
+  type        PromotionType
+
+  // Discount value
+  discountPercent Decimal? @db.Decimal(5, 2) // Phần trăm giảm (e.g., 10.00 = 10%)
+  discountAmount  Decimal? @db.Decimal(12, 2) // Số tiền giảm cố định
+
+  // Conditions
+  minOrderAmount    Decimal? @db.Decimal(12, 2) // Đơn hàng tối thiểu
+  maxDiscountAmount Decimal? @db.Decimal(12, 2) // Giảm tối đa (cho percentage)
+  maxUsage          Int? // Số lần sử dụng tối đa (null = không giới hạn)
+  maxUsagePerUser   Int?     @default(1) // Số lần mỗi user được dùng
+
+  // Service type restrictions
+  serviceTypes Json? // ["RIDE", "FOOD_DELIVERY"] - null = áp dụng tất cả
+
+  // Validity
+  status    PromotionStatus @default(ACTIVE)
+  startsAt  DateTime?
+  expiresAt DateTime?
+
+  // Statistics
+  totalUsage    Int     @default(0)
+  totalDiscount Decimal @default(0) @db.Decimal(12, 2)
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  coupons        Coupon[]
+  orderDiscounts OrderDiscount[]
+
+  @@index([code])
+  @@index([status])
+  @@index([startsAt])
+  @@index([expiresAt])
+  @@index([status, expiresAt])
+  @@map("promotions")
+}
+
+model Coupon {
+  id String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+
+  // Coupon details
+  code        String     @unique // Mã coupon (e.g., "WELCOME2025")
+  promotionId String?    @db.Uuid
+  promotion   Promotion? @relation(fields: [promotionId], references: [id], onDelete: SetNull)
+
+  // User assignment (optional - null = public coupon)
+  userId String? @db.Uuid
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Status
+  status CouponStatus @default(ACTIVE)
+
+  // Validity
+  expiresAt DateTime?
+
+  // Usage tracking
+  usedAt        DateTime?
+  usedBy        String?   @db.Uuid // User who used this coupon
+  usedInOrderId String?   @db.Uuid // Order that used this coupon
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  orderDiscounts OrderDiscount[]
+
+  @@index([code])
+  @@index([promotionId])
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([usedBy])
+  @@map("coupons")
+}
+
+// Order Discount (tracking which promotions/coupons applied to orders)
+model OrderDiscount {
+  id String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+
+  // Related entities
+  orderId     String     @db.Uuid
+  order       Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  promotionId String?    @db.Uuid
+  promotion   Promotion? @relation(fields: [promotionId], references: [id], onDelete: SetNull)
+  couponId    String?    @db.Uuid
+  coupon      Coupon?    @relation(fields: [couponId], references: [id], onDelete: SetNull)
+
+  // Discount details
+  discountAmount Decimal       @db.Decimal(12, 2) // Số tiền đã giảm
+  discountType   PromotionType
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([promotionId])
+  @@index([couponId])
+  @@map("order_discounts")
+}
+
+// ============================================
+// Document Management Domain
+// ============================================
+
+enum DocumentOwnerType {
+  USER
+  DRIVER
+}
+
+enum DocumentStatus {
+  PENDING // Chờ xác nhận
+  APPROVED // Đã được xác nhận
+  REJECTED // Bị từ chối
+}
+
+// Document Field Configuration (Admin tạo các loại giấy tờ cần thiết)
+model DocumentField {
+  id String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+
+  // Field identification
+  key         String  @unique // Key duy nhất (e.g., "cccd_front", "license_back", "face_image")
+  name        String // Tên hiển thị (e.g., "Mặt trước CCCD", "Mặt sau bằng lái")
+  description String? @db.Text // Mô tả chi tiết
+
+  // Owner type
+  ownerType DocumentOwnerType // USER hoặc DRIVER
+
+  // Required settings
+  isRequired Boolean @default(true) // Bắt buộc hay không
+  isActive   Boolean @default(true) // Có đang sử dụng không
+
+  // Display order
+  displayOrder Int @default(0) // Thứ tự hiển thị
+
+  // File type restrictions
+  allowedMimeTypes Json? // ["image/jpeg", "image/png", "application/pdf"]
+  maxFileSize      Int? // Max file size in bytes
+
+  // Metadata
+  metadata Json? // Additional configuration
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  // Relations
+  documents Document[]
+
+  @@index([ownerType])
+  @@index([isActive])
+  @@index([isRequired])
+  @@index([displayOrder])
+  @@index([deletedAt])
+  @@map("document_fields")
+}
+
+// Document (Giấy tờ thực tế được upload)
+model Document {
+  id String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+
+  // Document field reference
+  fieldId String        @db.Uuid
+  field   DocumentField @relation(fields: [fieldId], references: [id], onDelete: Restrict)
+
+  // Owner (User hoặc Driver)
+  userId   String? @db.Uuid
+  user     User?   @relation("UserDocuments", fields: [userId], references: [id], onDelete: Cascade)
+  driverId String? @db.Uuid
+  driver   Driver? @relation("DriverDocuments", fields: [driverId], references: [id], onDelete: Cascade)
+
+  // File information
+  mediaId  String? @db.Uuid // Reference to Media table
+  media    Media?  @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+  fileUrl  String // URL của file (có thể lưu trực tiếp hoặc qua Media)
+  fileName String? // Tên file gốc
+  fileSize Int? // Kích thước file (bytes)
+  mimeType String? // MIME type
+
+  // Status
+  status DocumentStatus @default(PENDING)
+
+  // Verification
+  verifiedBy      String?   @db.Uuid // Admin who verified
+  verifiedAt      DateTime? // Thời gian xác nhận
+  rejectionReason String?   @db.Text // Lý do từ chối (nếu bị reject)
+
+  // Metadata
+  metadata Json? // Additional data
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  // Unique constraints: một field chỉ có thể có một document cho mỗi owner
+  // Note: Sử dụng partial unique index trong migration vì một document chỉ có userId HOẶC driverId
+  @@index([fieldId])
+  @@index([userId])
+  @@index([driverId])
+  @@index([status])
+  @@index([verifiedBy])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@index([userId, fieldId])
+  @@index([driverId, fieldId])
+  @@map("documents")
+}
+
+// ============================================
+// Wallet Domain (Ví điện tử)
+// ============================================
+
+enum WalletRole {
+  AVAILABLE // Số dư rút được
+  PENDING // Số tiền chờ xử lý
+  DEPOSIT // Số tiền ký quỹ
+}
+
+enum WalletLedgerStatus {
+  PENDING // Đang chờ xử lý
+  COMPLETED // Hoàn thành
+  FAILED // Thất bại
+  CANCELLED // Đã hủy
+}
+
+enum WalletLedgerType {
+  DEPOSIT // Nạp tiền
+  WITHDRAWAL // Rút tiền
+  TRANSFER_IN // Chuyển vào
+  TRANSFER_OUT // Chuyển ra
+  PAYMENT // Thanh toán
+  REFUND // Hoàn tiền
+  ADJUSTMENT // Điều chỉnh
+  EARNING // Thu nhập (từ ride/order)
+  FEE // Phí
+}
+
+enum WalletReferenceType {
+  RIDE // Liên quan đến chuyến xe
+  ORDER // Liên quan đến đơn hàng
+  PAYMENT_TRANSACTION // Liên quan đến giao dịch thanh toán
+  WITHDRAWAL_REQUEST // Yêu cầu rút tiền
+  DEPOSIT_REQUEST // Yêu cầu nạp tiền
+  ADMIN_ADJUSTMENT // Điều chỉnh bởi admin
+}
+
+// Wallet - Ví của user hoặc driver
+model Wallet {
+  id String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+
+  // Owner (User hoặc Driver)
+  userId   String? @unique @db.Uuid // User sở hữu ví
+  user     User?   @relation("UserWallet", fields: [userId], references: [id], onDelete: Cascade)
+  driverId String? @unique @db.Uuid // Driver sở hữu ví
+  driver   Driver? @relation("DriverWallet", fields: [driverId], references: [id], onDelete: Cascade)
+
+  // Wallet status
+  isActive     Boolean @default(true)
+  isLocked     Boolean @default(false) // Khóa ví (không cho giao dịch)
+  lockedReason String? @db.Text // Lý do khóa
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  ledgers WalletLedger[]
+
+  @@index([userId])
+  @@index([driverId])
+  @@index([isActive])
+  @@index([isLocked])
+  @@map("wallets")
+}
+
+// WalletLedger - Sổ cái giao dịch (1 ledger duy nhất)
+model WalletLedger {
+  id String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+
+  // Wallet reference
+  walletId String @db.Uuid
+  wallet   Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  // Ledger role (phân loại số dư)
+  walletRole WalletRole // AVAILABLE | PENDING | DEPOSIT
+
+  // Transaction details
+  type     WalletLedgerType
+  status   WalletLedgerStatus @default(PENDING)
+  amount   Decimal            @db.Decimal(12, 2) // Số tiền (dương = tăng, âm = giảm)
+  currency String             @default("VND")
+
+  // Reference (liên kết với giao dịch khác)
+  referenceType WalletReferenceType?
+  referenceId   String?              @db.Uuid // ID của reference (rideId, orderId, etc.)
+
+  // Transaction info
+  description       String? @db.Text // Mô tả giao dịch
+  transactionNumber String? @unique // Mã giao dịch (nếu có)
+
+  // Payment provider info (nếu là nạp/rút qua gateway)
+  provider         String? // "seepay", "vnpay", "momo", etc.
+  providerId       String? // Transaction ID từ provider
+  providerResponse Json? // Response từ provider
+
+  // Processing info
+  processedAt   DateTime? // Thời gian xử lý
+  processedBy   String?   @db.Uuid // Admin/user xử lý
+  failureReason String?   @db.Text // Lý do thất bại
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([walletId])
+  @@index([walletRole])
+  @@index([type])
+  @@index([status])
+  @@index([referenceType])
+  @@index([referenceId])
+  @@index([transactionNumber])
+  @@index([createdAt])
+  @@index([walletId, walletRole, status])
+  @@index([walletId, createdAt])
+  @@map("wallet_ledgers")
+}
+
+// ============================================
+// Service Zone Domain (Khu vực dịch vụ)
+// ============================================
+
+enum ZoneStatus {
+  ACTIVE // Đang hoạt động
+  INACTIVE // Tạm ngưng
+}
+
+model ServiceZone {
+  id String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+
+  // Zone Information
+  name        String // Tên khu vực (e.g., "Hồ Chí Minh", "Hà Nội")
+  description String? @db.Text // Mô tả khu vực
+  code        String? @unique // Mã khu vực (e.g., "HCM", "HN")
+
+  // Polygon Coordinates
+  // Format: [[lat, lng], [lat, lng], ...] - Array of coordinate pairs
+  // Example: [[10.762622, 106.660172], [10.763622, 106.661172], ...]
+  coordinates Json // Array of [latitude, longitude] pairs forming the polygon
+
+  // Status
+  status   ZoneStatus @default(ACTIVE)
+  isActive Boolean    @default(true)
+
+  // Service Types (optional - nếu muốn giới hạn zone cho service cụ thể)
+  serviceTypes Json? // Array of ServiceType: ["RIDE", "FOOD_DELIVERY", ...]
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  @@index([status])
+  @@index([isActive])
+  @@index([code])
+  @@index([deletedAt])
+  @@map("service_zones")
+}
+
+// ============================================
+// Banner Domain
+// ============================================
+
+enum BannerStatus {
+  ACTIVE
+  INACTIVE
+  DRAFT
+}
+
+enum BannerPlatform {
+  WEB
+  MOBILE
+  ALL
+}
+
+enum BannerTargetAudience {
+  ALL
+  USER
+  DRIVER
+}
+
+enum BannerItemStatus {
+  PUBLISH
+  DRAFT
+}
+
+model Banner {
+  id String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+
+  // Basic Information
+  key         String  @unique // Unique key for banner
+  title       String
+  description String? @db.Text
+
+  // Platform & Audience
+  platform       BannerPlatform       @default(ALL) // WEB, MOBILE, ALL
+  targetAudience BannerTargetAudience @default(ALL) // ALL, USER, DRIVER
+
+  // Images
+  thumbnailDesktop String? // Ảnh thumbnail desktop
+  thumbnailMobile  String? // Ảnh thumbnail mobile
+
+  // Status
+  status BannerStatus @default(DRAFT)
+
+  // Creator
+  createdBy String? @db.Uuid // User who created this banner
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  // Relations
+  items BannerItem[]
+
+  @@index([key])
+  @@index([status])
+  @@index([platform])
+  @@index([targetAudience])
+  @@index([createdBy])
+  @@index([deletedAt])
+  @@index([createdAt])
+  @@map("banners")
+}
+
+model BannerItem {
+  id String @id @default(dbgenerated("uuid_v7()")) @db.Uuid
+
+  // Banner reference
+  bannerId String @db.Uuid
+  banner   Banner @relation(fields: [bannerId], references: [id], onDelete: Cascade)
+
+  // Basic Information
+  title       String
+  description String? @db.Text
+  link        String? // Link hoặc route cho mobile action (không validate)
+
+  // Status
+  status BannerItemStatus @default(DRAFT)
+
+  // Order
+  orderIndex Int @default(0) // Thứ tự hiển thị
+
+  // Images
+  thumbnailDesktop String? // Ảnh thumbnail desktop
+  thumbnailMobile  String? // Ảnh thumbnail mobile
+
+  // Metadata
+  metadata Json?
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  @@index([bannerId])
+  @@index([status])
+  @@index([orderIndex])
+  @@index([deletedAt])
+  @@index([bannerId, orderIndex])
+  @@map("banner_items")
+}
+
+// Update Rating model to support merchants
