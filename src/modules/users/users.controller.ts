@@ -2,7 +2,8 @@ import { Controller, Get, Query } from '@nestjs/common';
 import { BaseController } from 'common/base/base.controller';
 import { BaseQueryDto } from 'common/dto/base-query.dto';
 import { UsersService } from './users.service';
-// import { ListUsersDto } from './dto/list-users.dto'; // Ví dụ DTO mở rộng
+import { ApiResponse } from 'common/exceptions/exception.filter';
+import type { UserDto } from './dto/user.dto';
 
 @Controller('users')
 export class UsersController extends BaseController {
@@ -11,7 +12,7 @@ export class UsersController extends BaseController {
   }
 
   @Get()
-  async list(@Query() query: BaseQueryDto) {
+  async list(@Query() query: BaseQueryDto) : Promise<ApiResponse<UserDto[]>> {
     const pagination = new BaseQueryDto(query);
     return this.usersService.findAll(pagination);
   }
