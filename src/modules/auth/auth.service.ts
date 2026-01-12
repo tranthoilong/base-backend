@@ -160,18 +160,23 @@ export class AuthService {
     };
 
     // Lấy thời gian hết hạn của access token từ config
-    const accessTokenExpiresIn = this.configService.get<string>('app.jwt.accessTokenExpiresIn') || '15m';
+    const accessTokenExpiresInConfig = this.configService.get<string>('app.jwt.accessTokenExpiresIn') || '15m';
 
     // Tạo access token
     // Note: expiresIn đã được cấu hình trong JwtModule, không cần truyền lại
     const accessToken = await this.jwtService.signAsync(payload);
 
+    // Tính toán thời gian hết hạn thực tế cho access token
+    const accessTokenExpiresAt = this.parseExpiresIn(accessTokenExpiresInConfig);
+    const accessTokenExpiresIn = accessTokenExpiresAt.toISOString();
+
     // Tạo refresh token (random string, lưu vào database)
     const refreshTokenValue = randomBytes(64).toString('hex');
-    const refreshTokenExpiresIn = this.configService.get<string>('app.jwt.refreshTokenExpiresIn') || '7d';
+    const refreshTokenExpiresInConfig = this.configService.get<string>('app.jwt.refreshTokenExpiresIn') || '7d';
     
     // Parse expiresIn (7d, 30d, etc.) thành Date
-    const expiresAt = this.parseExpiresIn(refreshTokenExpiresIn);
+    const expiresAt = this.parseExpiresIn(refreshTokenExpiresInConfig);
+    const refreshTokenExpiresIn = expiresAt.toISOString();
 
     await this.authRepository.createRefreshToken({
       userId,
