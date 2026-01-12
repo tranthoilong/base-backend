@@ -187,29 +187,41 @@ async function main() {
     )
   );
 
-  // 2. ADMIN
+  // 2. ADMIN - Quản trị viên hệ thống (không có quyền quản lý system settings, roles, permissions)
   const adminRole = await prisma.role.create({
     data: {
       name: 'admin',
       displayName: 'Quản trị viên',
-      description: 'Quản trị viên hệ thống',
+      description: 'Quản trị viên hệ thống - quản lý users, drivers, rides, payments',
       isSystem: true,
     },
   });
   await assignPermissions(adminRole.id, [
+    // Users
     'users_read_all', 'users_update_all', 'users_ban_all',
+    // Drivers
     'drivers_read_all', 'drivers_update_all', 'drivers_approve_all', 'drivers_manage_status',
-    'vehicles_read_all', 'vehicles_approve_all',
-    'rides_read_all', 'rides_cancel_all',
-    'payments_read_all', 'payments_refund_all',
-    'wallets_read_all',
+    // Vehicles
+    'vehicles_read_all', 'vehicles_update_all', 'vehicles_approve_all',
+    // Rides
+    'rides_read_all', 'rides_update_all', 'rides_cancel_all',
+    // Payments
+    'payments_read_all', 'payments_update_all', 'payments_refund_all', 'payments_approve_all',
+    // Wallets
+    'wallets_read_all', 'wallets_topup_all', 'wallets_withdraw_all',
+    // Promotions
     'promotions_create_all', 'promotions_read_all', 'promotions_update_all', 'promotions_delete_all',
-    'ratings_read_all', 'ratings_delete_all',
-    'reports_view_financial', 'reports_view_operational', 'reports_export_all',
-    'earnings_read_all',
+    // Ratings
+    'ratings_read_all', 'ratings_update_all', 'ratings_delete_all',
+    // Notifications
+    'notifications_send_all', 'notifications_read_all',
+    // Reports
+    'reports_view_financial', 'reports_view_operational', 'reports_view_driver', 'reports_export_all',
+    // Earnings
+    'earnings_read_all', 'earnings_manage_all',
   ]);
 
-  // 3. DRIVER MANAGER
+  // 3. DRIVER MANAGER - Quản lý tài xế và phương tiện
   const driverManagerRole = await prisma.role.create({
     data: {
       name: 'driver_manager',
@@ -219,101 +231,141 @@ async function main() {
     },
   });
   await assignPermissions(driverManagerRole.id, [
+    // Drivers
     'drivers_read_all', 'drivers_update_all', 'drivers_approve_all', 'drivers_manage_status',
+    // Vehicles
     'vehicles_read_all', 'vehicles_update_all', 'vehicles_approve_all',
+    // Users (để xem thông tin user của driver)
     'users_read_all',
-    'reports_view_driver',
+    // Reports
+    'reports_view_driver', 'reports_export_all',
+    // Earnings
     'earnings_read_all',
+    // Notifications (để thông báo cho driver)
+    'notifications_send_all',
   ]);
 
-  // 4. CUSTOMER SUPPORT
+  // 4. CUSTOMER SUPPORT - Hỗ trợ khách hàng, xử lý khiếu nại
   const customerSupportRole = await prisma.role.create({
     data: {
       name: 'customer_support',
       displayName: 'Hỗ trợ Khách hàng',
-      description: 'Hỗ trợ khách hàng, xử lý khiếu nại',
+      description: 'Hỗ trợ khách hàng, xử lý khiếu nại, hoàn tiền',
       isSystem: true,
     },
   });
   await assignPermissions(customerSupportRole.id, [
-    'users_read_all',
+    // Users
+    'users_read_all', 'users_update_all',
+    // Drivers (để xem thông tin khi xử lý khiếu nại)
     'drivers_read_all',
+    // Rides
     'rides_read_all', 'rides_cancel_all',
+    // Payments
     'payments_read_all', 'payments_refund_all',
-    'ratings_read_all',
-    'notifications_send_all',
+    // Ratings
+    'ratings_read_all', 'ratings_delete_all',
+    // Notifications
+    'notifications_send_all', 'notifications_read_all',
+    // Wallets
     'wallets_read_all',
   ]);
 
-  // 5. ACCOUNTANT
+  // 5. ACCOUNTANT - Quản lý tài chính, thanh toán
   const accountantRole = await prisma.role.create({
     data: {
       name: 'accountant',
       displayName: 'Kế toán',
-      description: 'Quản lý tài chính, thanh toán',
+      description: 'Quản lý tài chính, thanh toán, ví, thu nhập',
       isSystem: true,
     },
   });
   await assignPermissions(accountantRole.id, [
-    'payments_read_all', 'payments_approve_all',
+    // Payments
+    'payments_read_all', 'payments_update_all', 'payments_approve_all',
+    // Wallets
     'wallets_read_all', 'wallets_topup_all', 'wallets_withdraw_all',
+    // Earnings
     'earnings_read_all', 'earnings_manage_all',
+    // Reports
     'reports_view_financial', 'reports_export_all',
+    // Users (để xem thông tin khi xử lý tài chính)
+    'users_read_all',
   ]);
 
-  // 6. MARKETING
+  // 6. MARKETING - Quản lý khuyến mãi, thông báo, chiến dịch
   const marketingRole = await prisma.role.create({
     data: {
       name: 'marketing',
       displayName: 'Marketing',
-      description: 'Quản lý khuyến mãi, thông báo',
+      description: 'Quản lý khuyến mãi, thông báo, chiến dịch marketing',
       isSystem: true,
     },
   });
   await assignPermissions(marketingRole.id, [
+    // Promotions
     'promotions_create_all', 'promotions_read_all', 'promotions_update_all', 'promotions_delete_all',
-    'notifications_send_all',
+    // Notifications
+    'notifications_send_all', 'notifications_read_all',
+    // Users (để phân tích và gửi thông báo)
     'users_read_all',
-    'reports_view_operational',
+    // Reports
+    'reports_view_operational', 'reports_export_all',
   ]);
 
-  // 7. DRIVER
+  // 7. DRIVER - Tài xế
   const driverRole = await prisma.role.create({
     data: {
       name: 'driver',
       displayName: 'Tài xế',
-      description: 'Quyền mặc định cho tài xế',
+      description: 'Quyền mặc định cho tài xế - quản lý thông tin cá nhân, phương tiện, chuyến đi',
       isSystem: true,
     },
   });
   await assignPermissions(driverRole.id, [
+    // Users
     'users_read_own', 'users_update_own',
+    // Drivers
     'drivers_read_own', 'drivers_update_own',
+    // Vehicles
     'vehicles_create_own', 'vehicles_read_own', 'vehicles_update_own',
+    // Rides
     'rides_read_own', 'rides_update_own', 'rides_accept_all', 'rides_complete_all',
+    // Payments
     'payments_read_own',
+    // Wallets
     'wallets_read_own', 'wallets_withdraw_own',
+    // Ratings
     'ratings_create_all', 'ratings_read_own',
+    // Notifications
     'notifications_read_own',
+    // Earnings
     'earnings_read_own',
   ]);
 
-  // 8. CUSTOMER
+  // 8. CUSTOMER - Khách hàng
   const customerRole = await prisma.role.create({
     data: {
       name: 'customer',
       displayName: 'Khách hàng',
-      description: 'Quyền mặc định cho khách hàng',
+      description: 'Quyền mặc định cho khách hàng - đặt chuyến, thanh toán, đánh giá',
       isSystem: true,
     },
   });
   await assignPermissions(customerRole.id, [
+    // Users
     'users_read_own', 'users_update_own',
+    // Rides
     'rides_create_all', 'rides_read_own', 'rides_cancel_own',
+    // Payments
     'payments_read_own',
+    // Wallets
     'wallets_read_own', 'wallets_topup_own',
+    // Promotions
     'promotions_read_all', 'promotions_use_all',
+    // Ratings
     'ratings_create_all', 'ratings_read_own',
+    // Notifications
     'notifications_read_own',
   ]);
 
