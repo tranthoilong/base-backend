@@ -3,11 +3,11 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Param,
   Body,
   Query,
-  Patch,
 } from '@nestjs/common';
 import { BaseController } from 'common/base/base.controller';
 import { BaseQueryDto } from 'common/dto/base-query.dto';
@@ -17,10 +17,12 @@ import {
   CreateRoleDto,
   UpdateRoleDto,
   AssignPermissionsDto,
+  UpdatePermissionsDto,
   RoleResponseDto,
 } from './dto';
 import { JwtAuthGuard } from 'common/guards';
 import { UseGuards } from '@nestjs/common';
+import { RequirePermission } from 'common/decorators/require-permission.decorator';
 
 @Controller('roles')
 @UseGuards(JwtAuthGuard)
@@ -30,6 +32,7 @@ export class RolesController extends BaseController {
   }
 
   @Get()
+  @RequirePermission('roles', 'read', '*')
   async findAll(
     @Query() query: BaseQueryDto,
   ): Promise<ApiResponse<RoleResponseDto[]>> {
@@ -37,31 +40,30 @@ export class RolesController extends BaseController {
   }
 
   @Get(':id')
+  @RequirePermission('roles', 'read', '*')
   async findById(@Param('id') id: string): Promise<ApiResponse<RoleResponseDto>> {
     return this.rolesService.findById(id);
   }
 
   @Post()
+  @RequirePermission('roles', 'create', '*')
   async create(
     @Body() createRoleDto: CreateRoleDto,
   ): Promise<ApiResponse<RoleResponseDto>> {
     return this.rolesService.create(createRoleDto);
   }
 
-  @Put(':id')
-  async update(
+  @Patch(':id/permissions')
+  @RequirePermission('roles', 'update', '*')
+  async updatePermissions(
     @Param('id') id: string,
-    @Body() updateRoleDto: UpdateRoleDto,
+    @Body() updatePermissionsDto: UpdatePermissionsDto,
   ): Promise<ApiResponse<RoleResponseDto>> {
-    return this.rolesService.update(id, updateRoleDto);
+    return this.rolesService.updatePermissions(id, updatePermissionsDto);
   }
 
-  @Delete(':id')
-  async delete(@Param('id') id: string): Promise<ApiResponse<null>> {
-    return this.rolesService.delete(id);
-  }
-
-  @Post(':id/permissions')
+  @Put(':id/permissions')
+  @RequirePermission('roles', 'update', '*')
   async assignPermissions(
     @Param('id') id: string,
     @Body() assignPermissionsDto: AssignPermissionsDto,
@@ -69,7 +71,17 @@ export class RolesController extends BaseController {
     return this.rolesService.assignPermissions(id, assignPermissionsDto);
   }
 
+  @Put(':id')
+  @RequirePermission('roles', 'update', '*')
+  async update(
+    @Param('id') id: string,
+    @Body() updateRoleDto: UpdateRoleDto,
+  ): Promise<ApiResponse<RoleResponseDto>> {
+    return this.rolesService.update(id, updateRoleDto);
+  }
+
   @Delete(':roleId/permissions/:permissionId')
+  @RequirePermission('roles', 'update', '*')
   async removePermission(
     @Param('roleId') roleId: string,
     @Param('permissionId') permissionId: string,

@@ -7,12 +7,6 @@ import { RatingDto } from '../../ratings/dto/rating.dto';
 import { NotificationDto } from '../../notifications/dto/notification.dto';
 import { PromotionUsageDto } from '../../promotions/dto/promotion.dto';
 import { UserRoleDto } from '../../../../common/dto/rbac.dto';
-import { IsEmail, IsNotEmpty, MinLength } from 'class-validator';
-
-
-  
-
-
 
 export class UserDto {
   @Expose()
@@ -74,33 +68,4 @@ export class UserDto {
   @Expose()
   @Type(() => UserRoleDto)
   userRoles?: UserRoleDto[];
-}
-
-// DTO for creating user
-export class CreateUserDto {
-  @IsEmail()
-  @IsNotEmpty()
-  email: string;
-
-  @IsNotEmpty()
-  @MinLength(6)
-  password: string;
-  name: string;
-  phone: string;
-  avatar?: string;
-  role?: typeof UserRole;
-}
-
-// DTO for updating user
-export class UpdateUserDto {
-  email?: string;
-  name?: string;
-  phone?: string;
-  avatar?: string;
-  status?: typeof UserStatus;
-}
-
-// DTO for user response (without password)
-export class UserResponseDto extends UserDto {
-  // Password không được expose
 }

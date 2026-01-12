@@ -3,7 +3,7 @@ import { UsersService } from "./users.service";
 import { BaseController } from "common/base/base.controller";
 import { BaseQueryDto } from "common/dto/base-query.dto";
 import { ApiResponse } from "common/exceptions/exception.filter";
-import { CreateUserDto, UpdateUserDto, UserDto } from "./dto/user.dto";
+import { CreateUserDto, UpdateUserDto, UserDto } from "./dto";
 import { JwtAuthGuard, PermissionGuard } from "common/guards";
 import { RequirePermission } from "common/decorators";
 
@@ -16,15 +16,24 @@ export class UsersController extends BaseController {
 
   @Get()
   @RequirePermission('users', 'read', '*')
-  async list(@Query() query: BaseQueryDto) : Promise<ApiResponse<UserDto[]>> {
+  async list(
+    @Query() query: BaseQueryDto,
+  ): Promise<ApiResponse<UserDto[]>> {
     return this.usersService.findAll(query);
+  }
+
+  @Get(':id')
+  @RequirePermission('users', 'read', '*')
+  async findById(@Param('id') id: string): Promise<ApiResponse<UserDto>> {
+    return this.usersService.findById(id);
   }
 
   @Post()
   @RequirePermission('users', 'create', '*')
-  async create(@Body() createUserDto: CreateUserDto): Promise<ApiResponse<UserDto>> {
-    // TODO: Implement create user
-    throw new Error('Not implemented');
+  async create(
+    @Body() createUserDto: CreateUserDto,
+  ): Promise<ApiResponse<UserDto>> {
+    return this.usersService.create(createUserDto);
   }
 
   @Put(':id')
@@ -33,14 +42,21 @@ export class UsersController extends BaseController {
     @Param('id') id: string,
     @Body() updateUserDto: UpdateUserDto,
   ): Promise<ApiResponse<UserDto>> {
-    // TODO: Implement update user
-    throw new Error('Not implemented');
+    return this.usersService.update(id, updateUserDto);
+  }
+
+  @Patch(':id')
+  @RequirePermission('users', 'update', '*')
+  async partialUpdate(
+    @Param('id') id: string,
+    @Body() updateUserDto: UpdateUserDto,
+  ): Promise<ApiResponse<UserDto>> {
+    return this.usersService.partialUpdate(id, updateUserDto);
   }
 
   @Delete(':id')
   @RequirePermission('users', 'delete', '*')
   async delete(@Param('id') id: string): Promise<ApiResponse<null>> {
-    // TODO: Implement delete user
-    throw new Error('Not implemented');
+    return this.usersService.delete(id);
   }
 }

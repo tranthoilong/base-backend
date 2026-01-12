@@ -1,0 +1,34 @@
+{
+    "modules": "roles",
+    "actions": [
+        "create",
+        "read",
+        "update",
+        "delete"
+    ],
+    "resources": [
+        "*"
+    ],
+    "permissions": [
+        {
+            "action": "create",
+            "resource": "*",
+            "description": "Create a new role"
+        },
+        {
+            "action": "read",
+            "resource": "*",
+            "description": "Read a role"
+        },
+        {
+            "action": "update",
+            "resource": "*",
+            "description": "Update a role"
+        },
+        {
+            "action": "delete",
+            "resource": "*",
+            "description": "Delete a role"
+        }
+    ]
+}

@@ -9,6 +9,7 @@ import {
   CreateRoleDto,
   UpdateRoleDto,
   AssignPermissionsDto,
+  UpdatePermissionsDto,
   RoleResponseDto,
 } from './dto';
 
@@ -143,6 +144,46 @@ export class RolesService extends BaseService<Role> {
     } catch (error) {
       return ApiResponseHelper.error(
         'Xóa permission khỏi role thất bại',
+        error,
+      );
+    }
+  }
+
+  async updatePermissions(
+    id: string,
+    updatePermissionsDto: UpdatePermissionsDto,
+  ): Promise<ApiResponse<RoleResponseDto>> {
+    try {
+      const existingRole = await this.rolesRepository.findById(id);
+      if (!existingRole) {
+        throw new NotFoundException('Role không tồn tại');
+      }
+
+      // Kiểm tra ít nhất một trong hai trường add hoặc remove phải có giá trị
+      if (
+        (!updatePermissionsDto.add ||
+          updatePermissionsDto.add.length === 0) &&
+        (!updatePermissionsDto.remove ||
+          updatePermissionsDto.remove.length === 0)
+      ) {
+        throw new Error(
+          'Phải cung cấp ít nhất một trong hai trường: add hoặc remove',
+        );
+      }
+
+      const role = await this.rolesRepository.updatePermissions(
+        id,
+        updatePermissionsDto.add,
+        updatePermissionsDto.remove,
+      );
+      return ApiResponseHelper.success<RoleResponseDto>(
+        role,
+        'Cập nhật permissions cho role thành công',
+        null,
+      );
+    } catch (error) {
+      return ApiResponseHelper.error(
+        'Cập nhật permissions cho role thất bại',
         error,
       );
     }

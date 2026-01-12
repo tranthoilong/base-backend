@@ -200,4 +200,70 @@ export class RolesRepository {
       },
     });
   }
+
+  async updatePermissions(
+    roleId: string,
+    addPermissionIds?: string[],
+    removePermissionIds?: string[],
+  ): Promise<RoleResponseDto> {
+    // Kiểm tra role tồn tại
+    const existingRole = await this.prisma.role.findUnique({
+      where: { id: roleId },
+    });
+
+    if (!existingRole) {
+      throw new NotFoundException('Role không tồn tại');
+    }
+
+    // Xóa permissions nếu có
+    if (removePermissionIds && removePermissionIds.length > 0) {
+      await this.prisma.rolePermission.deleteMany({
+        where: {
+          roleId,
+          permissionId: {
+            in: removePermissionIds,
+          },
+        },
+      });
+    }
+
+    // Thêm permissions mới nếu có
+    if (addPermissionIds && addPermissionIds.length > 0) {
+      // Lấy danh sách permissions hiện tại để tránh trùng lặp
+      const existingPermissions = await this.prisma.rolePermission.findMany({
+        where: {
+          roleId,
+          permissionId: {
+            in: addPermissionIds,
+          },
+        },
+        select: {
+          permissionId: true,
+        },
+      });
+
+      const existingPermissionIds = existingPermissions.map(
+        (ep) => ep.permissionId,
+      );
+      const newPermissionIds = addPermissionIds.filter(
+        (id) => !existingPermissionIds.includes(id),
+      );
+
+      if (newPermissionIds.length > 0) {
+        await this.prisma.rolePermission.createMany({
+          data: newPermissionIds.map((permissionId) => ({
+            roleId,
+            permissionId,
+          })),
+        });
+      }
+    }
+
+    const role = await this.findById(roleId);
+    if (!role) {
+      throw new NotFoundException('Role không tồn tại');
+    }
+
+    return role;
+  }
 }

@@ -1,0 +1,36 @@
+{
+    "modules": "users",
+    "actions": [
+        "create",
+        "read",
+        "update",
+        "delete"
+    ],
+    "resources": [
+        "*"
+    ],
+    "permissions": [
+        {
+            "action": "create",
+            "resource": "*",
+            "description": "Create a new user"
+        },
+        {
+            "action": "read",
+            "resource": "*",
+            "description": "Read a user"
+        },
+        {
+            "name": "update",
+            "resource": "*",
+            "action": "update",
+            "description": "Update a user"
+        },
+        {
+            "name": "delete",
+            "action": "delete",
+            "resource": "*",
+            "description": "Delete a user"
+        }
+    ]
+}
