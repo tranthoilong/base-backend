@@ -4,6 +4,7 @@ import { RegisterDto, LoginDto, RefreshTokenDto, AuthResponseDto } from './dto';
 import { JwtAuthGuard } from 'common/guards';
 import { ApiResponseHelper } from 'common/response/api-response.helper';
 import { ApiResponse } from 'common/exceptions/exception.filter';
+import { RegisterUserDto } from './dto/register-user.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -22,6 +23,34 @@ export class AuthController {
       return ApiResponseHelper.error('Đăng ký thất bại', error);
     }
   }
+
+  // @Post('register-user')
+  // async registerUser(@Body() registerUserDto: RegisterUserDto): Promise<ApiResponse<AuthResponseDto>> {
+  //   try {
+  //     const result = await this.authService.registerUser(registerUserDto);
+  //     return ApiResponseHelper.success<AuthResponseDto>(
+  //       result,
+  //       'Đăng ký thành công',
+  //       null,
+  //     );
+  //   } catch (error) {
+  //     return ApiResponseHelper.error('Đăng ký thất bại', error);
+  //   }
+  // }
+
+  // @Post('register-driver')
+  // async registerDriver(@Body() registerDriverDto: RegisterDriverDto): Promise<ApiResponse<AuthResponseDto>> {
+  //   try {
+  //     const result = await this.authService.registerDriver(registerDriverDto);
+  //     return ApiResponseHelper.success<AuthResponseDto>(
+  //       result,
+  //       'Đăng ký tài xế thành công',
+  //       null,
+  //     );
+  //   } catch (error) {
+  //     return ApiResponseHelper.error('Đăng ký tài xế thất bại', error);
+  //   }
+  // }
 
   @Post('login')
   async login(@Body() loginDto: LoginDto): Promise<ApiResponse<AuthResponseDto>> {

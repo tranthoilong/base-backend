@@ -6,7 +6,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { AuthRepository } from './auth.repository';
-import { RegisterDto, LoginDto, RefreshTokenDto, AuthResponseDto } from './dto';
+import { RegisterDto, LoginDto, RefreshTokenDto, AuthResponseDto, RegisterUserDto } from './dto';
 import { randomBytes } from 'crypto';
 
 @Injectable()
