@@ -1,9 +1,9 @@
-import { Controller, Get, Query } from '@nestjs/common';
-import { BaseController } from 'common/base/base.controller';
-import { BaseQueryDto } from 'common/dto/base-query.dto';
-import { UsersService } from './users.service';
-import { ApiResponse } from 'common/exceptions/exception.filter';
-import type { UserDto } from './dto/user.dto';
+import { Controller, Get, Param, Post, Put, Query, Body, Patch } from "@nestjs/common";
+import { UsersService } from "./users.service";
+import { BaseController } from "common/base/base.controller";
+import { BaseQueryDto } from "common/dto/base-query.dto";
+import { ApiResponse } from "common/exceptions/exception.filter";
+import { CreateUserDto, UpdateUserDto, UserDto } from "./dto/user.dto";
 
 @Controller('users')
 export class UsersController extends BaseController {
@@ -13,8 +13,8 @@ export class UsersController extends BaseController {
 
   @Get()
   async list(@Query() query: BaseQueryDto) : Promise<ApiResponse<UserDto[]>> {
-    const pagination = new BaseQueryDto(query);
-    return this.usersService.findAll(pagination);
+    return this.usersService.findAll(query);
   }
+
 
 }

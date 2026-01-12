@@ -1,7 +1,18 @@
-import { Expose, Transform } from 'class-transformer';
-import { RoleDto } from './role.dto';
-import { UserFavoriteLocationDto } from './user-favorite-location.dto';
-import { UserRoleDto } from './user-roles.dto';
+import { Expose, Type } from 'class-transformer';
+import type { UserRole, UserStatus } from '@prisma/client';
+import { DriverDto } from '../../drivers/dto/driver.dto';
+import { WalletDto } from '../../wallets/dto/wallet.dto';
+import { RideDto } from '../../rides/dto/ride.dto';
+import { RatingDto } from '../../ratings/dto/rating.dto';
+import { NotificationDto } from '../../notifications/dto/notification.dto';
+import { PromotionUsageDto } from '../../promotions/dto/promotion.dto';
+import { UserRoleDto } from '../../../../common/dto/rbac.dto';
+import { IsEmail, IsNotEmpty, MinLength } from 'class-validator';
+
+
+  
+
+
 
 export class UserDto {
   @Expose()
@@ -14,37 +25,16 @@ export class UserDto {
   name: string;
 
   @Expose()
-  phone?: string;
+  phone: string;
 
   @Expose()
   avatar?: string;
 
   @Expose()
-  bio?: string;
+  role: UserRole;
 
   @Expose()
-  isActive: boolean;
-
-  @Expose()
-  isVerified: boolean;
-
-  @Expose()
-  emailVerifiedAt?: Date;
-
-  @Expose()
-  lastLoginAt?: Date;
-
-  @Expose()
-  lastLoginIp?: string;
-
-  @Expose()
-  passwordChangedAt?: Date;
-
-  @Expose()
-  twoFactorEnabled: boolean;
-
-  @Expose()
-  metadata?: any;
+  status: UserStatus;
 
   @Expose()
   createdAt: Date;
@@ -52,15 +42,65 @@ export class UserDto {
   @Expose()
   updatedAt: Date;
 
+  // Relations (optional - chỉ load khi cần)
   @Expose()
-  deletedAt?: Date;
-
-//   @Expose()
-//   roles?: RoleDto[];
-
-  @Expose()
-  roles?: UserRoleDto[];
+  @Type(() => DriverDto)
+  driver?: DriverDto;
 
   @Expose()
-  favoriteLocations?: UserFavoriteLocationDto[];
+  @Type(() => WalletDto)
+  wallet?: WalletDto;
+
+  @Expose()
+  @Type(() => RideDto)
+  ridesAsCustomer?: RideDto[];
+
+  @Expose()
+  @Type(() => RatingDto)
+  ratingsGiven?: RatingDto[];
+
+  @Expose()
+  @Type(() => RatingDto)
+  ratingsReceived?: RatingDto[];
+
+  @Expose()
+  @Type(() => NotificationDto)
+  notifications?: NotificationDto[];
+
+  @Expose()
+  @Type(() => PromotionUsageDto)
+  promotionUsages?: PromotionUsageDto[];
+
+  @Expose()
+  @Type(() => UserRoleDto)
+  userRoles?: UserRoleDto[];
+}
+
+// DTO for creating user
+export class CreateUserDto {
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+
+  @IsNotEmpty()
+  @MinLength(6)
+  password: string;
+  name: string;
+  phone: string;
+  avatar?: string;
+  role?: typeof UserRole;
+}
+
+// DTO for updating user
+export class UpdateUserDto {
+  email?: string;
+  name?: string;
+  phone?: string;
+  avatar?: string;
+  status?: typeof UserStatus;
+}
+
+// DTO for user response (without password)
+export class UserResponseDto extends UserDto {
+  // Password không được expose
 }

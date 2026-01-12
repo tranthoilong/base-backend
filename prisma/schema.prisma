@@ -8,12 +8,465 @@ datasource db {
   // url moved to prisma.config.ts for Prisma 7+ compatibility
 }
 
-model User{
-  id        String   @id @default(dbgenerated("uuid_v7()")) @db.Uuid
-  email     String   @unique
+enum UserRole {
+  CUSTOMER
+  DRIVER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  BANNED
+  PENDING_VERIFICATION
+}
+
+enum DriverStatus {
+  ONLINE
+  OFFLINE
+  BUSY
+  ON_TRIP
+}
+
+enum VehicleType {
+  BIKE       // Xe máy
+  CAR_4_SEAT // Xe 4 chỗ
+  CAR_7_SEAT // Xe 7 chỗ
+  LUXURY_CAR // Xe cao cấp
+}
+
+enum RideStatus {
+  SEARCHING  // Đang tìm tài xế
+  ACCEPTED   // Tài xế đã nhận
+  ARRIVED    // Tài xế đã đến điểm đón
+  STARTED    // Đang trong chuyến đi
+  COMPLETED  // Hoàn thành
+  CANCELLED  // Đã hủy
+}
+
+enum PaymentMethod {
+  CASH
+  WALLET
+  CREDIT_CARD
+  BANK_TRANSFER
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum TransactionType {
+  TOP_UP      // Nạp tiền
+  WITHDRAW    // Rút tiền
+  RIDE_PAYMENT // Thanh toán chuyến đi
+  REFUND      // Hoàn tiền
+  COMMISSION  // Hoa hồng
+}
+
+enum PromotionType {
+  PERCENTAGE  // Giảm theo %
+  FIXED       // Giảm cố định
+  FREE_RIDE   // Miễn phí chuyến đi
+}
+
+// ============= USERS & AUTH =============
+model User {
+  id        String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String     @unique
   password  String
   name      String
-  phone     String?
+  phone     String     @unique
   avatar    String?
-  bio       String?
+  role      UserRole   @default(CUSTOMER) // Role mặc định (giữ để tương thích)
+  status    UserStatus @default(PENDING_VERIFICATION)
+  
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  
+  // Relations
+  driver           Driver?
+  wallet           Wallet?
+  ridesAsCustomer  Ride[]              @relation("CustomerRides")
+  ratingsGiven     Rating[]            @relation("RatingsGiven")
+  ratingsReceived  Rating[]            @relation("RatingsReceived")
+  notifications    Notification[]
+  promotionUsages  PromotionUsage[]
+  userRoles        UserRole_Model[]    @relation("UserToRoles") // RBAC: User có nhiều roles
+  
+  @@map("users")
+}
+
+// ============= RBAC (Role-Based Access Control) =============
+model Role {
+  id          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String            @unique // admin, driver_manager, customer_support, etc.
+  displayName String            // Tên hiển thị: "Quản trị viên", "Quản lý tài xế"
+  description String?
+  isSystem    Boolean           @default(false) // Role hệ thống không được xóa
+  
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  
+  // Relations
+  permissions RolePermission[]
+  users       UserRole_Model[]  @relation("RoleToUsers")
+  
+  @@map("roles")
+}
+
+model Permission {
+  id          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  module      String            // users, drivers, vehicles, rides, payments, promotions, reports
+  action      String            // create, read, update, delete, manage, approve, etc.
+  resource    String            // Tên tài nguyên cụ thể (có thể là *)
+  description String?
+  
+  // Format: module:action:resource
+  // VD: "users:create:*", "rides:update:own", "payments:read:all"
+  code        String            @unique // module_action_resource
+  
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  
+  // Relations
+  roles       RolePermission[]
+  
+  @@unique([module, action, resource])
+  @@index([module])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  roleId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  
+  createdAt    DateTime   @default(now())
+  
+  // Relations
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole_Model {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  roleId    String   @db.Uuid
+  
+  assignedAt DateTime @default(now())
+  assignedBy String?  @db.Uuid // User ID của người assign
+  expiresAt  DateTime? // Role có thời hạn (optional)
+  
+  // Relations
+  user      User     @relation("UserToRoles", fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation("RoleToUsers", fields: [roleId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+// ============= DRIVER & VEHICLE =============
+model Driver {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String        @unique @db.Uuid
+  licenseNumber     String        @unique
+  licenseExpiry     DateTime
+  status            DriverStatus  @default(OFFLINE)
+  rating            Float         @default(5.0)
+  totalTrips        Int           @default(0)
+  
+  // Vị trí hiện tại
+  currentLat        Float?
+  currentLng        Float?
+  
+  // Documents
+  licensePhoto      String?
+  identityCardPhoto String?
+  
+  isVerified        Boolean       @default(false)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  
+  // Relations
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicles          Vehicle[]
+  rides             Ride[]        @relation("DriverRides")
+  earnings          Earning[]
+  
+  @@map("drivers")
+}
+
+model Vehicle {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  driverId        String       @db.Uuid
+  type            VehicleType
+  brand           String       // Honda, Toyota, etc.
+  model           String       // Wave, Vios, etc.
+  year            Int
+  licensePlate    String       @unique
+  color           String
+  seats           Int
+  
+  // Documents
+  registrationPhoto String?
+  insurancePhoto    String?
+  photos            String[]     // Array of photo URLs
+  
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  
+  // Relations
+  driver          Driver       @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  rides           Ride[]
+  
+  @@map("vehicles")
+}
+
+// ============= RIDES =============
+model Ride {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId      String        @db.Uuid
+  driverId        String?       @db.Uuid
+  vehicleId       String?       @db.Uuid
+  
+  // Locations
+  pickupAddress   String
+  pickupLat       Float
+  pickupLng       Float
+  
+  dropoffAddress  String
+  dropoffLat      Float
+  dropoffLng      Float
+  
+  // Ride details
+  status          RideStatus    @default(SEARCHING)
+  vehicleType     VehicleType
+  distance        Float         // km
+  duration        Int?          // minutes
+  
+  // Pricing
+  baseFare        Float
+  distanceFare    Float
+  timeFare        Float         @default(0)
+  surgeFare       Float         @default(0) // Phụ phí cao điểm
+  discount        Float         @default(0)
+  totalFare       Float
+  
+  // Payment
+  paymentMethod   PaymentMethod
+  paymentStatus   PaymentStatus @default(PENDING)
+  
+  // Timestamps
+  requestedAt     DateTime      @default(now())
+  acceptedAt      DateTime?
+  arrivedAt       DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  
+  cancelReason    String?
+  notes           String?       // Ghi chú từ khách hàng
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  // Relations
+  customer        User          @relation("CustomerRides", fields: [customerId], references: [id])
+  driver          Driver?       @relation("DriverRides", fields: [driverId], references: [id])
+  vehicle         Vehicle?      @relation(fields: [vehicleId], references: [id])
+  rating          Rating?
+  payment         Payment?
+  promotionUsage  PromotionUsage?
+  
+  @@index([customerId])
+  @@index([driverId])
+  @@index([status])
+  @@index([requestedAt])
+  @@map("rides")
+}
+
+// ============= RATINGS =============
+model Rating {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rideId      String   @unique @db.Uuid
+  fromUserId  String   @db.Uuid // Người đánh giá
+  toUserId    String   @db.Uuid // Người được đánh giá
+  
+  rating      Int      // 1-5 sao
+  comment     String?
+  tags        String[] // ["Lịch sự", "Xe sạch", "Lái xe an toàn"]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  ride        Ride     @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  fromUser    User     @relation("RatingsGiven", fields: [fromUserId], references: [id])
+  toUser      User     @relation("RatingsReceived", fields: [toUserId], references: [id])
+  
+  @@map("ratings")
+}
+
+// ============= PAYMENTS & WALLET =============
+model Wallet {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String        @unique @db.Uuid
+  balance       Float         @default(0)
+  
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  
+  // Relations
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions  Transaction[]
+  
+  @@map("wallets")
+}
+
+model Transaction {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  walletId        String          @db.Uuid
+  type            TransactionType
+  amount          Float
+  balanceBefore   Float
+  balanceAfter    Float
+  description     String
+  referenceId     String?         // ID của ride, payment, etc.
+  
+  createdAt       DateTime        @default(now())
+  
+  // Relations
+  wallet          Wallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  
+  @@index([walletId])
+  @@index([createdAt])
+  @@map("transactions")
+}
+
+model Payment {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rideId          String        @unique @db.Uuid
+  amount          Float
+  method          PaymentMethod
+  status          PaymentStatus @default(PENDING)
+  
+  // For online payment
+  transactionId   String?       @unique
+  gatewayResponse Json?
+  
+  paidAt          DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  // Relations
+  ride            Ride          @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  
+  @@map("payments")
+}
+
+// ============= EARNINGS (Thu nhập tài xế) =============
+model Earning {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  driverId        String   @db.Uuid
+  
+  totalEarnings   Float    // Tổng thu nhập
+  commission      Float    // Hoa hồng trả cho platform (%)
+  netEarnings     Float    // Thu nhập thực tế
+  
+  date            DateTime @default(now())
+  weekNumber      Int      // Tuần trong năm
+  month           Int
+  year            Int
+  
+  totalTrips      Int      @default(0)
+  totalDistance   Float    @default(0)
+  totalHours      Float    @default(0)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  driver          Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  
+  @@index([driverId, date])
+  @@map("earnings")
+}
+
+// ============= PROMOTIONS =============
+model Promotion {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code            String         @unique
+  title           String
+  description     String
+  type            PromotionType
+  value           Float          // Giá trị giảm (% hoặc số tiền)
+  maxDiscount     Float?         // Giảm tối đa (cho type PERCENTAGE)
+  minRideAmount   Float          @default(0) // Giá trị đơn tối thiểu
+  
+  maxUsage        Int?           // Số lần sử dụng tối đa
+  maxUsagePerUser Int            @default(1)
+  currentUsage    Int            @default(0)
+  
+  startDate       DateTime
+  endDate         DateTime
+  
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  
+  // Relations
+  usages          PromotionUsage[]
+  
+  @@map("promotions")
+}
+
+model PromotionUsage {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promotionId String    @db.Uuid
+  userId      String    @db.Uuid
+  rideId      String    @unique @db.Uuid
+  
+  discount    Float     // Số tiền đã giảm
+  
+  createdAt   DateTime  @default(now())
+  
+  // Relations
+  promotion   Promotion @relation(fields: [promotionId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
+  ride        Ride      @relation(fields: [rideId], references: [id])
+  
+  @@index([userId])
+  @@index([promotionId])
+  @@map("promotion_usages")
+}
+
+// ============= NOTIFICATIONS =============
+model Notification {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  title     String
+  message   String
+  type      String   // RIDE_UPDATE, PROMOTION, PAYMENT, etc.
+  data      Json?    // Additional data
+  
+  isRead    Boolean  @default(false)
+  
+  createdAt DateTime @default(now())
+  
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, isRead])
+  @@map("notifications")
 }

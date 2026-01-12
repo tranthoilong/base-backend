@@ -1,40 +1,54 @@
-export class BaseQueryDto {
-  page?: number = 1;
-  limit?: number = 10;
-  search?: string;
-  startDate?: string | Date;
-  endDate?: string | Date;
-  sortBy?: string = 'createdAt';
-  sortOrder?: 'asc' | 'desc' = 'desc';
-  all?: boolean = false;
+import { Type, Transform } from 'class-transformer';
+import { IsOptional, IsString, IsInt, IsBoolean, IsIn } from 'class-validator';
 
-  constructor(query?: any) {
-    if (query) {
-      // Pagination
-      this.page = query.page ? +query.page : 1;
-      this.limit = query.limit ? +query.limit : 10;
-      
-      // Search
-      this.search = query.search;
-      
-      // Date range
-      this.startDate = query.startDate ? new Date(query.startDate) : undefined;
-      this.endDate = query.endDate ? new Date(query.endDate) : undefined;
-      
-      // Sort - hỗ trợ format "createdAt,desc" hoặc riêng lẻ
-      if (query.sortBy) {
-        const sortParts = query.sortBy.split(',');
-        this.sortBy = sortParts[0] || 'createdAt';
-        this.sortOrder = (sortParts[1] as 'asc' | 'desc') || 'desc';
-      } else {
-        this.sortBy = 'createdAt';
-        this.sortOrder = query.sortOrder || 'desc';
-      }
-      
-      // All flag
-      this.all = query.all === 'true' || query.all === true;
+export class BaseQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  page?: number = 1;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  limit?: number = 10;
+
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value ? new Date(value) : undefined)
+  startDate?: Date;
+
+  @IsOptional()
+  @Transform(({ value }) => value ? new Date(value) : undefined)
+  endDate?: Date;
+
+  @IsOptional()
+  @Transform(({ value, obj }) => {
+    // Hỗ trợ format "createdAt,desc" hoặc riêng lẻ
+    if (typeof value === 'string' && value.includes(',')) {
+      const parts = value.split(',');
+      obj.sortOrder = (parts[1] as 'asc' | 'desc') || 'desc';
+      return parts[0] || 'createdAt';
     }
-  }
+    return value || 'createdAt';
+  })
+  @IsString()
+  sortBy?: string = 'createdAt';
+
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortOrder?: 'asc' | 'desc' = 'desc';
+
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === 'true' || value === true) return true;
+    if (value === 'false' || value === false) return false;
+    return false;
+  })
+  @IsBoolean()
+  all?: boolean = false;
 
   getPage(): number {
     return this.page || 1;
