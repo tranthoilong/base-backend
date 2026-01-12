@@ -7,9 +7,16 @@ import * as bcrypt from 'bcryptjs';
 export class AuthRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findUserByEmail(email: string): Promise<User | null> {
+  async findUserByEmail(email: string): Promise<(User & { userRoles?: { role: { name: string } }[] }) | null> {
     return this.prisma.user.findUnique({
       where: { email },
+      include: {
+        userRoles: {
+          include: {
+            role: true,
+          },
+        },
+      },
     });
   }
 
@@ -50,10 +57,20 @@ export class AuthRepository {
     });
   }
 
-  async findRefreshToken(token: string): Promise<(RefreshToken & { user: User }) | null> {
+  async findRefreshToken(token: string): Promise<(RefreshToken & { user: User & { userRoles?: { role: { name: string } }[] } }) | null> {
     return this.prisma.refreshToken.findUnique({
       where: { token },
-      include: { user: true },
+      include: { 
+        user: {
+          include: {
+            userRoles: {
+              include: {
+                role: true,
+              },
+            },
+          },
+        },
+      },
     });
   }
 
@@ -79,5 +96,38 @@ export class AuthRepository {
         },
       },
     });
+  }
+
+  async assignDefaultRole(userId: string, roleName: string): Promise<void> {
+    // Tìm role theo name
+    const role = await this.prisma.role.findUnique({
+      where: { name: roleName },
+    });
+
+    if (!role) {
+      // Nếu role không tồn tại, bỏ qua (có thể log warning)
+      console.warn(`Role "${roleName}" không tồn tại, bỏ qua việc gán role cho user ${userId}`);
+      return;
+    }
+
+    // Kiểm tra xem user đã có role này chưa
+    const existingUserRole = await this.prisma.userRole_Model.findUnique({
+      where: {
+        userId_roleId: {
+          userId,
+          roleId: role.id,
+        },
+      },
+    });
+
+    // Nếu chưa có, gán role
+    if (!existingUserRole) {
+      await this.prisma.userRole_Model.create({
+        data: {
+          userId,
+          roleId: role.id,
+        },
+      });
+    }
   }
 }

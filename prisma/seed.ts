@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, UserStatus, DriverStatus, VehicleType, RideStatus, PaymentMethod, PaymentStatus, PromotionType } from '@prisma/client';
+import { PrismaClient, UserStatus, DriverStatus, VehicleType, RideStatus, PaymentMethod, PaymentStatus, PromotionType } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
@@ -11,27 +11,40 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
+// Helper function để xóa dữ liệu an toàn (bỏ qua nếu bảng không tồn tại)
+async function safeDeleteMany(operation: () => Promise<any>, tableName: string) {
+  try {
+    await operation();
+  } catch (error: any) {
+    if (error.code === 'P2021' || error.message?.includes('does not exist')) {
+      console.log(`   ⚠️  Bảng ${tableName} chưa tồn tại, bỏ qua...`);
+    } else {
+      throw error;
+    }
+  }
+}
+
 async function main() {
   console.log('🌱 Bắt đầu seeding database...\n');
 
   // Xóa dữ liệu cũ (theo thứ tự quan hệ)
   console.log('🗑️  Xóa dữ liệu cũ...');
-  await prisma.promotionUsage.deleteMany();
-  await prisma.notification.deleteMany();
-  await prisma.rating.deleteMany();
-  await prisma.payment.deleteMany();
-  await prisma.earning.deleteMany();
-  await prisma.ride.deleteMany();
-  await prisma.vehicle.deleteMany();
-  await prisma.driver.deleteMany();
-  await prisma.transaction.deleteMany();
-  await prisma.wallet.deleteMany();
-  await prisma.promotion.deleteMany();
-  await prisma.userRole_Model.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.rolePermission.deleteMany();
-  await prisma.permission.deleteMany();
-  await prisma.role.deleteMany();
+  await safeDeleteMany(() => prisma.promotionUsage.deleteMany(), 'promotion_usages');
+  await safeDeleteMany(() => prisma.notification.deleteMany(), 'notifications');
+  await safeDeleteMany(() => prisma.rating.deleteMany(), 'ratings');
+  await safeDeleteMany(() => prisma.payment.deleteMany(), 'payments');
+  await safeDeleteMany(() => prisma.earning.deleteMany(), 'earnings');
+  await safeDeleteMany(() => prisma.ride.deleteMany(), 'rides');
+  await safeDeleteMany(() => prisma.vehicle.deleteMany(), 'vehicles');
+  await safeDeleteMany(() => prisma.driver.deleteMany(), 'drivers');
+  await safeDeleteMany(() => prisma.transaction.deleteMany(), 'transactions');
+  await safeDeleteMany(() => prisma.wallet.deleteMany(), 'wallets');
+  await safeDeleteMany(() => prisma.promotion.deleteMany(), 'promotions');
+  await safeDeleteMany(() => prisma.userRole_Model.deleteMany(), 'user_roles');
+  await safeDeleteMany(() => prisma.user.deleteMany(), 'users');
+  await safeDeleteMany(() => prisma.rolePermission.deleteMany(), 'role_permissions');
+  await safeDeleteMany(() => prisma.permission.deleteMany(), 'permissions');
+  await safeDeleteMany(() => prisma.role.deleteMany(), 'roles');
 
   console.log('✅ Đã xóa dữ liệu cũ\n');
 
@@ -323,7 +336,6 @@ async function main() {
       password: hashedPassword,
       name: 'Admin Gogogo',
       phone: '0900000000',
-      role: UserRole.ADMIN,
       status: UserStatus.ACTIVE,
       avatar: 'https://i.pravatar.cc/150?img=1',
     },
@@ -337,7 +349,6 @@ async function main() {
         password: hashedPassword,
         name: 'Nguyễn Văn A',
         phone: '0901234567',
-        role: UserRole.CUSTOMER,
         status: UserStatus.ACTIVE,
         avatar: 'https://i.pravatar.cc/150?img=11',
       },
@@ -348,7 +359,6 @@ async function main() {
         password: hashedPassword,
         name: 'Trần Thị B',
         phone: '0902234567',
-        role: UserRole.CUSTOMER,
         status: UserStatus.ACTIVE,
         avatar: 'https://i.pravatar.cc/150?img=21',
       },
@@ -359,7 +369,6 @@ async function main() {
         password: hashedPassword,
         name: 'Lê Văn C',
         phone: '0903234567',
-        role: UserRole.CUSTOMER,
         status: UserStatus.ACTIVE,
         avatar: 'https://i.pravatar.cc/150?img=31',
       },
@@ -374,7 +383,6 @@ async function main() {
         password: hashedPassword,
         name: 'Phạm Văn Tài',
         phone: '0911234567',
-        role: UserRole.DRIVER,
         status: UserStatus.ACTIVE,
         avatar: 'https://i.pravatar.cc/150?img=51',
       },
@@ -385,7 +393,6 @@ async function main() {
         password: hashedPassword,
         name: 'Hoàng Văn Lái',
         phone: '0912234567',
-        role: UserRole.DRIVER,
         status: UserStatus.ACTIVE,
         avatar: 'https://i.pravatar.cc/150?img=52',
       },
@@ -396,7 +403,6 @@ async function main() {
         password: hashedPassword,
         name: 'Võ Thị Thu',
         phone: '0913234567',
-        role: UserRole.DRIVER,
         status: UserStatus.ACTIVE,
         avatar: 'https://i.pravatar.cc/150?img=53',
       },
@@ -407,7 +413,6 @@ async function main() {
         password: hashedPassword,
         name: 'Đặng Văn Mạnh',
         phone: '0914234567',
-        role: UserRole.DRIVER,
         status: UserStatus.ACTIVE,
         avatar: 'https://i.pravatar.cc/150?img=54',
       },
@@ -457,6 +462,13 @@ async function main() {
   console.log('💰 Tạo wallets...');
 
   await Promise.all([
+    // Wallet cho admin
+    prisma.wallet.create({
+      data: {
+        userId: admin.id,
+        balance: 10000000, // 10M cho admin
+      },
+    }),
     ...customers.map((customer) =>
       prisma.wallet.create({
         data: {
@@ -876,15 +888,16 @@ async function main() {
   console.log(`   • Customers: ${customers.length}`);
   console.log(`   • Drivers: ${drivers.length}`);
   console.log(`   • Vehicles: ${vehicles.length}`);
+  console.log(`   • Wallets: ${1 + customers.length + driverUsers.length}`);
   console.log(`   • Promotions: ${promotions.length}`);
   console.log(`   • Rides: 3`);
   console.log(`   • Notifications: 3`);
   console.log(`   • Earnings: ${drivers.slice(0, 3).length}\n`);
 
   console.log('🔑 LOGIN CREDENTIALS:');
-  console.log('   Admin:    admin@gogogo.vn / 123456');
-  console.log('   Customer: khach1@gmail.com / 123456');
-  console.log('   Driver:   taixe1@gmail.com / 123456');
+  console.log('   Admin:    admin@gogogo.vn / 3110@Long!!');
+  console.log('   Customer: khach1@gmail.com / 3110@Long!!');
+  console.log('   Driver:   taixe1@gmail.com / 3110@Long!!');
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 }
 

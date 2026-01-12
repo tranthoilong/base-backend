@@ -89,7 +89,6 @@ export class UsersRepository {
         name: createUserDto.name,
         phone: createUserDto.phone,
         avatar: createUserDto.avatar,
-        role: createUserDto.role,
       },
       include: {
         userRoles: { include: { role: true } },

@@ -33,23 +33,31 @@ export class AuthService {
     // Tạo user mới
     const user = await this.authRepository.createUser(registerDto);
 
-    // Tạo wallet cho user
-    // Note: Có thể tạo wallet tự động khi tạo user bằng Prisma trigger hoặc ở đây
-    // Tạm thời bỏ qua, có thể thêm sau
+    // Tự động gán role 'customer' cho user mới đăng ký
+    await this.authRepository.assignDefaultRole(user.id, 'customer');
+
+    // Lấy lại user với userRoles
+    const userWithRoles = await this.authRepository.findUserByEmail(user.email);
+    if (!userWithRoles) {
+      throw new UnauthorizedException('Không thể tải thông tin người dùng');
+    }
+
+    // Lấy role đầu tiên từ userRoles
+    const primaryRole = userWithRoles.userRoles?.[0]?.role?.name || 'customer';
 
     // Tạo tokens
-    const tokens = await this.generateTokens(user.id, user.email, user.role);
+    const tokens = await this.generateTokens(userWithRoles.id, userWithRoles.email, primaryRole);
 
     return {
       ...tokens,
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        phone: user.phone,
-        avatar: user.avatar || undefined,
-        role: user.role,
-        status: user.status,
+        id: userWithRoles.id,
+        email: userWithRoles.email,
+        name: userWithRoles.name,
+        phone: userWithRoles.phone,
+        avatar: userWithRoles.avatar || undefined,
+        role: primaryRole,
+        status: userWithRoles.status,
       },
     };
   }
@@ -75,8 +83,11 @@ export class AuthService {
       throw new UnauthorizedException('Tài khoản đã bị khóa hoặc vô hiệu hóa');
     }
 
+    // Lấy role đầu tiên từ userRoles (nếu có)
+    const primaryRole = user.userRoles?.[0]?.role?.name || 'customer';
+
     // Tạo tokens
-    const tokens = await this.generateTokens(user.id, user.email, user.role);
+    const tokens = await this.generateTokens(user.id, user.email, primaryRole);
 
     return {
       ...tokens,
@@ -86,7 +97,7 @@ export class AuthService {
         name: user.name,
         phone: user.phone,
         avatar: user.avatar || undefined,
-        role: user.role,
+        role: primaryRole,
         status: user.status,
       },
     };
@@ -121,8 +132,11 @@ export class AuthService {
     // Revoke token cũ
     await this.authRepository.revokeRefreshToken(refreshToken);
 
+    // Lấy role đầu tiên từ userRoles (nếu có)
+    const primaryRole = user.userRoles?.[0]?.role?.name || 'customer';
+
     // Tạo tokens mới
-    const tokens = await this.generateTokens(user.id, user.email, user.role);
+    const tokens = await this.generateTokens(user.id, user.email, primaryRole);
 
     return {
       ...tokens,
@@ -132,7 +146,7 @@ export class AuthService {
         name: user.name,
         phone: user.phone,
         avatar: user.avatar || undefined,
-        role: user.role,
+        role: primaryRole,
         status: user.status,
       },
     };

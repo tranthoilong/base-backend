@@ -33,8 +33,12 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         name: true,
         phone: true,
         avatar: true,
-        role: true,
         status: true,
+        userRoles: {
+          include: {
+            role: true,
+          },
+        },
       },
     });
 

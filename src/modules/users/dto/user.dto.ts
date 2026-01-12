@@ -1,5 +1,5 @@
 import { Expose, Type } from 'class-transformer';
-import type { UserRole, UserStatus } from '@prisma/client';
+import type { UserStatus } from '@prisma/client';
 import { DriverDto } from '../../drivers/dto/driver.dto';
 import { WalletDto } from '../../wallets/dto/wallet.dto';
 import { RideDto } from '../../rides/dto/ride.dto';
@@ -23,9 +23,6 @@ export class UserDto {
 
   @Expose()
   avatar?: string;
-
-  @Expose()
-  role: UserRole;
 
   @Expose()
   status: UserStatus;
