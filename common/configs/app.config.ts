@@ -13,4 +13,10 @@ export const appConfig = registerAs('app', () => ({
   swaggerTitle: process.env.SWAGGER_TITLE || 'Octo-Go API',
   swaggerDescription: process.env.SWAGGER_DESCRIPTION || 'API documentation for Octo-Go application',
   swaggerVersion: process.env.SWAGGER_VERSION || '1.0',
+  jwt: {
+    accessTokenSecret: process.env.JWT_ACCESS_TOKEN_SECRET || 'your-access-token-secret-key-change-in-production',
+    accessTokenExpiresIn: process.env.JWT_ACCESS_TOKEN_EXPIRES_IN || '15m',
+    refreshTokenSecret: process.env.JWT_REFRESH_TOKEN_SECRET || 'your-refresh-token-secret-key-change-in-production',
+    refreshTokenExpiresIn: process.env.JWT_REFRESH_TOKEN_EXPIRES_IN || '7d',
+  },
 }));

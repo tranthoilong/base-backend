@@ -311,7 +311,7 @@ async function main() {
   console.log('📊 BẮT ĐẦU TẠO DỮ LIỆU NGHIỆP VỤ');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-  const hashedPassword = await bcrypt.hash('123456', 10);
+  const hashedPassword = await bcrypt.hash('3110@Long!!', 10);
 
   // ============= TẠO USERS =============
   console.log('👥 Tạo users...');

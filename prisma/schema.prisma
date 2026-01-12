@@ -95,8 +95,28 @@ model User {
   notifications    Notification[]
   promotionUsages  PromotionUsage[]
   userRoles        UserRole_Model[]    @relation("UserToRoles") // RBAC: User có nhiều roles
+  refreshTokens    RefreshToken[]
   
   @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  token     String   @unique
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
 }
 
 // ============= RBAC (Role-Based Access Control) =============
